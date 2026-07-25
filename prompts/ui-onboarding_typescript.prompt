@@ -1,0 +1,23 @@
+# Intent
+Build TinyWins' first-run mobile onboarding wizard. It gathers a starting
+profile and optional vision board while keeping the user in control.
+
+# Requirements
+- Gate completed users away from onboarding and preserve local fields on error.
+- Render six ordered steps: age, gender, current habit, new habit goal,
+  optional vision board, and required day-one mood.
+- Submit optional image data as multipart/form-data with JPEG/PNG/WebP and a
+  5 MB client limit.
+- Show distinct checking, submitting, analyzing, done, and labeled error states.
+
+# Interfaces
+Use `getOnboardingStatus`, `submitOnboarding`, `Mood`, and `isFixtureMode`
+from `src/lib/ui-data.ts`.
+
+# Output
+`src/app/onboarding/page.tsx`
+
+# Acceptance criteria
+- No API request happens before the final step.
+- Invalid image type/size is explained inline.
+- Analysis failure never discards a successful stored profile/image.

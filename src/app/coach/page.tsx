@@ -1,166 +1,181 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { CheckInFlow, CheckInResultCard } from "@/components/CheckInFlow";
+import {
+  isFixtureMode,
+  sendCoachFeedback,
+  sendCoachMessage,
+  type CheckInResult,
+  type CoachReply,
+} from "@/lib/ui-data";
 
-interface CoachReply {
-  reply: string;
-  microStep?: string;
-  timerSeconds?: number;
-}
+type Phase = "chatting" | "microStepReady" | "timing" | "interview" | "submitting" | "result";
+type Message = { from: "user" | "coach"; text: string };
 
 function CoachChat() {
-  const taskId = useSearchParams().get("taskId") ?? undefined;
-  const [messages, setMessages] = useState<{ from: "user" | "coach"; text: string }[]>([
-    { from: "coach", text: "Hey — what's going on?" },
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const goalId = searchParams.get("goalId") ?? undefined;
+  const [phase, setPhase] = useState<Phase>("chatting");
+  const [messages, setMessages] = useState<Message[]>([
+    { from: "coach", text: "What feels hardest to begin?" },
   ]);
   const [input, setInput] = useState("");
-  const [microStep, setMicroStep] = useState<string | null>(null);
+  const [microStep, setMicroStep] = useState<CoachReply["microStep"]>();
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
-  const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
-  const [voiceStatus, setVoiceStatus] = useState<
-    "idle" | "loading" | "ready" | "offline"
-  >("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [showApproachCheckIn, setShowApproachCheckIn] = useState(false);
+  const [result, setResult] = useState<CheckInResult | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionIdRef = useRef("");
+  const autoSentGoalRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const existing = window.sessionStorage.getItem("tinywins-coach-session-id");
+    const sessionId = existing || crypto.randomUUID();
+    if (!existing) window.sessionStorage.setItem("tinywins-coach-session-id", sessionId);
+    sessionIdRef.current = sessionId;
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
 
-  // Prefetch the pep-talk audio when a micro-step lands; playback happens
-  // only on the user's tap so browser autoplay rules never block it.
   useEffect(() => {
+    if (!goalId || !sessionIdRef.current || autoSentGoalRef.current === goalId) return;
+    autoSentGoalRef.current = goalId;
+    void send("I’m stuck—help me start.", true);
+    // The ref intentionally prevents a duplicate send in React Strict Mode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goalId]);
+
+  function startTimer() {
     if (!microStep) return;
-    let cancelled = false;
-    let url: string | null = null;
-    setVoiceStatus("loading");
-    setVoiceUrl(null);
-
-    fetch("/api/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: microStep }),
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("voice offline");
-        const blob = await res.blob();
-        if (cancelled) return;
-        url = URL.createObjectURL(blob);
-        setVoiceUrl(url);
-        setVoiceStatus("ready");
-      })
-      .catch(() => {
-        if (!cancelled) setVoiceStatus("offline");
-      });
-
-    return () => {
-      cancelled = true;
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [microStep]);
-
-  function startTimer(seconds: number) {
     if (timerRef.current) clearInterval(timerRef.current);
-    setSecondsLeft(seconds);
+    setPhase("timing");
+    setSecondsLeft(microStep.timerSeconds);
     timerRef.current = setInterval(() => {
-      setSecondsLeft((s) => {
-        if (s === null || s <= 1) {
+      setSecondsLeft((current) => {
+        if (current === null || current <= 1) {
           if (timerRef.current) clearInterval(timerRef.current);
           return 0;
         }
-        return s - 1;
+        return current - 1;
       });
     }, 1000);
   }
 
-  async function send() {
-    if (!input.trim()) return;
-    const text = input;
-    setInput("");
-    setMessages((m) => [...m, { from: "user", text }]);
+  async function send(text = input, isAutomatic = false) {
+    if (!text.trim() || !sessionIdRef.current) return;
+    setError(null);
+    if (!isAutomatic) setInput("");
+    setMessages((current) => [...current, { from: "user", text }]);
+    try {
+      const reply = await sendCoachMessage({
+        message: text,
+        goalId,
+        sessionId: sessionIdRef.current,
+      });
+      setMessages((current) => [...current, { from: "coach", text: reply.reply }]);
+      setShowApproachCheckIn(Boolean(reply.showApproachCheckIn));
+      if (reply.microStep) {
+        setMicroStep(reply.microStep);
+        setPhase("microStepReady");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Coach is offline right now.");
+    }
+  }
 
-    const res = await fetch("/api/coach/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text, taskId }),
-    });
-    const reply: CoachReply = await res.json();
-
-    setMessages((m) => [...m, { from: "coach", text: reply.reply }]);
-    if (reply.microStep) {
-      setMicroStep(reply.microStep);
-      if (reply.timerSeconds) startTimer(reply.timerSeconds);
+  async function shareApproach(approach: "direct" | "gentle" | "unchanged") {
+    try {
+      await sendCoachFeedback({ goalId, sessionId: sessionIdRef.current, approach });
+      setShowApproachCheckIn(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save that preference.");
     }
   }
 
   return (
     <div className="space-y-4">
-      <h1 className="font-display text-2xl text-moss-900">Coach</h1>
+      <header className="flex items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-2xl text-moss-900">Coach</h1>
+            {isFixtureMode && <span className="rounded-full bg-gold/20 px-2 py-1 text-xs text-moss-700">Demo data</span>}
+          </div>
+          {goalId ? <p className="text-xs text-moss-500">Helping with your active goal</p> : <p className="text-xs text-moss-500">Tell me what is getting in the way.</p>}
+        </div>
+      </header>
 
-      <div className="space-y-2">
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={
-              m.from === "coach"
-                ? "bg-moss-50 rounded-2xl rounded-bl-sm p-3 text-sm max-w-[85%]"
-                : "bg-moss-700 text-paper rounded-2xl rounded-br-sm p-3 text-sm max-w-[85%] ml-auto"
-            }
-          >
-            {m.text}
+      {error && <p role="alert" className="rounded-xl border border-gold bg-gold/20 p-3 text-sm text-moss-900">{error}</p>}
+
+      <div className="space-y-2" aria-live="polite">
+        {messages.map((message, index) => (
+          <div key={index} className={message.from === "coach" ? "max-w-[85%] rounded-2xl rounded-bl-sm bg-moss-50 p-3 text-sm text-moss-900" : "ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-moss-700 p-3 text-sm text-paper"}>
+            {message.text}
           </div>
         ))}
       </div>
 
-      {microStep && (
-        <div className="bg-gold/20 border border-gold rounded-2xl p-4 text-center space-y-2">
-          <p className="text-xs uppercase tracking-wide text-moss-700">2-minute start</p>
-          <p className="font-medium text-moss-900">{microStep}</p>
-          {secondsLeft !== null && (
-            <p className="font-display text-3xl text-spark">
-              {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}
-            </p>
-          )}
-          {voiceStatus === "ready" && voiceUrl && (
-            <button
-              onClick={() => new Audio(voiceUrl).play()}
-              className="text-xs underline text-moss-700"
-            >
-              🔊 Play pep talk
-            </button>
-          )}
-          {voiceStatus === "offline" && (
-            <p className="text-xs text-moss-700/60">voice offline</p>
-          )}
-        </div>
+      {showApproachCheckIn && (
+        <section className="rounded-2xl border border-moss-200 bg-paper p-4 space-y-3">
+          <p className="font-medium text-moss-900">Want me to change how I show up?</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => void shareApproach("direct")} className="rounded-full border border-moss-300 px-3 py-2 text-sm text-moss-700">More direct</button>
+            <button onClick={() => void shareApproach("gentle")} className="rounded-full border border-moss-300 px-3 py-2 text-sm text-moss-700">More gentle</button>
+            <button onClick={() => void shareApproach("unchanged")} className="rounded-full border border-moss-300 px-3 py-2 text-sm text-moss-700">Keep trying this</button>
+          </div>
+        </section>
       )}
 
-      <div className="flex gap-2">
-        <input
-          className="flex-1 rounded-full border border-moss-200 px-4 py-2 text-sm"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="I'm stuck on..."
+      {microStep && (phase === "microStepReady" || phase === "timing") && (
+        <section className="rounded-2xl border border-gold bg-gold/20 p-5 text-center space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-moss-700">2-minute start</p>
+          <p className="font-medium text-moss-900">{microStep.description}</p>
+          {phase === "microStepReady" ? (
+            <button onClick={startTimer} className="rounded-full bg-moss-700 px-5 py-3 text-sm font-semibold text-paper">Start timer</button>
+          ) : (
+            <>
+              <p className="font-display text-4xl text-spark">
+                {Math.floor((secondsLeft ?? 0) / 60)}:{String((secondsLeft ?? 0) % 60).padStart(2, "0")}
+              </p>
+              {goalId && <button onClick={() => setPhase("interview")} className="rounded-full bg-moss-700 px-5 py-3 text-sm font-semibold text-paper">I&apos;m done</button>}
+            </>
+          )}
+        </section>
+      )}
+
+      {phase === "interview" && goalId && (
+        <CheckInFlow
+          goalId={goalId}
+          onCancel={() => setPhase("timing")}
+          onComplete={(completed) => {
+            setResult(completed);
+            setPhase("result");
+          }}
         />
-        <button
-          onClick={send}
-          className="bg-moss-700 text-paper rounded-full px-4 py-2 text-sm font-medium"
-        >
-          Send
-        </button>
-      </div>
+      )}
+
+      {phase === "result" && result && (
+        <CheckInResultCard
+          result={result}
+          onDismiss={() => router.push("/today")}
+          onRewards={() => router.push("/rewards")}
+        />
+      )}
+
+      {phase !== "interview" && phase !== "result" && (
+        <div className="flex gap-2">
+          <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void send()} className="flex-1 rounded-full border border-moss-200 bg-paper px-4 py-2 text-sm" placeholder="I’m stuck on…" />
+          <button onClick={() => void send()} className="rounded-full bg-moss-700 px-4 py-2 text-sm font-medium text-paper">Send</button>
+        </div>
+      )}
     </div>
   );
 }
 
-// useSearchParams() must sit under a Suspense boundary to prerender.
 export default function CoachPage() {
-  return (
-    <Suspense>
-      <CoachChat />
-    </Suspense>
-  );
+  return <Suspense><CoachChat /></Suspense>;
 }

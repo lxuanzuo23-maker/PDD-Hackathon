@@ -18,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="max-w-md mx-auto flex justify-around py-3 text-sm font-medium text-moss-700">
             <Link href="/today">Today</Link>
             <Link href="/coach">Coach</Link>
+            <Link href="/growth">Growth</Link>
             <Link href="/rewards">Rewards</Link>
           </div>
         </nav>
