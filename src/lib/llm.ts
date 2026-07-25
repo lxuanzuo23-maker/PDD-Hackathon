@@ -133,16 +133,21 @@ async function chatTokenRouter(
   const apiKey = process.env.TOKENROUTER_API_KEY;
   if (!apiKey) throw new Error("TOKENROUTER_API_KEY not set");
 
-  // OpenAI-compatible gateway; `auto:<mode>` lets TokenRouter pick the
-  // upstream model per request (balance | cost | quality | latency).
-  const res = await fetch("https://api.tokenrouter.io/v1/chat/completions", {
+  // This account uses TokenRouter's OpenAI-compatible .com API. The old
+  // auto:balance value belonged to an unrelated .io service, so ignore it.
+  const configuredModel = process.env.TOKENROUTER_MODEL;
+  const model =
+    configuredModel && configuredModel !== "auto:balance"
+      ? configuredModel
+      : "google/gemini-3.5-flash-lite";
+  const res = await fetch("https://api.tokenrouter.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.TOKENROUTER_MODEL || "auto:balance",
+      model,
       messages,
       temperature,
       max_tokens: maxTokens,
@@ -153,9 +158,13 @@ async function chatTokenRouter(
     throw new Error(`TokenRouter error ${res.status}: ${await res.text()}`);
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: unknown } }>;
+  };
   const content = data?.choices?.[0]?.message?.content;
-  if (!content) throw new Error("TokenRouter returned no content");
+  if (typeof content !== "string" || !content) {
+    throw new Error("TokenRouter returned no content");
+  }
   return content;
 }
 

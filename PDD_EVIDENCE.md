@@ -70,6 +70,13 @@ _(fill in during the build)_
   (`tests/llm.test.ts`, covers the prompt's 4 acceptance criteria with a
   stubbed fetch) updated **in the same commit** per convention rule 2.
   `pdd --local sync llm` re-verification pending an LLM key (see Tooling status).
+- 2026-07-25 `llm`: live account probing corrected an initial provider mix-up.
+  The `.io` service returned an opaque 500 before authentication; the configured
+  key successfully listed 117 models and completed a chat through the verified
+  `.com` endpoint (`POST /v1/chat/completions`) using
+  `google/gemini-3.5-flash-lite`. Prompt, code, and test now assert the
+  verified endpoint, Chat Completions request/response shape, and fallback from
+  the obsolete `auto:balance` setting.
 - 2026-07-25 `tts`: NEW module — ElevenLabs voice pep talk (sponsor track, P2).
   Born prompt-first: `prompts/tts_typescript.prompt` → `src/lib/tts.ts` →
   `/api/tts` route → `tests/tts.test.ts` (all 5 acceptance criteria, stubbed

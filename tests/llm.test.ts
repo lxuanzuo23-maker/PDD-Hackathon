@@ -22,6 +22,7 @@ const messages = [{ role: "user" as const, content: "hi" }];
 afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.TOKENROUTER_API_KEY;
+  delete process.env.TOKENROUTER_MODEL;
 });
 
 describe("chatJSON", () => {
@@ -57,6 +58,28 @@ describe("chatJSON", () => {
 });
 
 describe("chat provider selection", () => {
+  it("uses the verified TokenRouter endpoint and legacy-model fallback", async () => {
+    process.env.TOKENROUTER_API_KEY = "tr_test";
+    process.env.TOKENROUTER_MODEL = "auto:balance";
+    stubFetchReplies("hello");
+
+    await expect(chat(messages, { provider: "tokenrouter" })).resolves.toBe("hello");
+
+    expect(fetch).toHaveBeenCalledWith("https://api.tokenrouter.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer tr_test",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3.5-flash-lite",
+        messages,
+        temperature: 0.4,
+        max_tokens: 500,
+      }),
+    });
+  });
+
   it("throws a clear, named error when the selected provider's key is unset", async () => {
     await expect(
       chat(messages, { provider: "tokenrouter" })
