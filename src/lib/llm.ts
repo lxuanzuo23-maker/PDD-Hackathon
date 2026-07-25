@@ -133,9 +133,9 @@ async function chatTokenRouter(
   const apiKey = process.env.TOKENROUTER_API_KEY;
   if (!apiKey) throw new Error("TOKENROUTER_API_KEY not set");
 
-  // OpenAI-compatible gateway; `auto:<mode>` lets TokenRouter pick the
-  // upstream model per request (balance | cost | quality | latency).
-  const res = await fetch("https://api.tokenrouter.io/v1/chat/completions", {
+  // TokenRouter's current API is Responses-compatible. `auto:<mode>` lets it
+  // select an upstream model (balance | cost | quality | latency).
+  const res = await fetch("https://api.tokenrouter.io/v1/responses", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -143,9 +143,9 @@ async function chatTokenRouter(
     },
     body: JSON.stringify({
       model: process.env.TOKENROUTER_MODEL || "auto:balance",
-      messages,
+      input: formatTokenRouterInput(messages),
       temperature,
-      max_tokens: maxTokens,
+      max_output_tokens: maxTokens,
     }),
   });
 
@@ -153,10 +153,16 @@ async function chatTokenRouter(
     throw new Error(`TokenRouter error ${res.status}: ${await res.text()}`);
   }
 
-  const data = await res.json();
-  const content = data?.choices?.[0]?.message?.content;
+  const data = (await res.json()) as { output_text?: unknown };
+  const content = typeof data.output_text === "string" ? data.output_text : undefined;
   if (!content) throw new Error("TokenRouter returned no content");
   return content;
+}
+
+function formatTokenRouterInput(messages: ChatMessage[]): string {
+  return messages
+    .map((message) => `${message.role.toUpperCase()}:\n${message.content}`)
+    .join("\n\n");
 }
 
 async function chatOpenAI(

@@ -11,7 +11,7 @@ function stubFetchReplies(...contents: string[]) {
     vi.fn(async () => ({
       ok: true,
       json: async () => ({
-        choices: [{ message: { content: queue.shift() ?? "" } }],
+        output_text: queue.shift() ?? "",
       }),
     }))
   );
@@ -57,6 +57,27 @@ describe("chatJSON", () => {
 });
 
 describe("chat provider selection", () => {
+  it("uses TokenRouter's Responses endpoint and request shape", async () => {
+    process.env.TOKENROUTER_API_KEY = "tr_test";
+    stubFetchReplies("hello");
+
+    await expect(chat(messages, { provider: "tokenrouter" })).resolves.toBe("hello");
+
+    expect(fetch).toHaveBeenCalledWith("https://api.tokenrouter.io/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer tr_test",
+      },
+      body: JSON.stringify({
+        model: "auto:balance",
+        input: "USER:\nhi",
+        temperature: 0.4,
+        max_output_tokens: 500,
+      }),
+    });
+  });
+
   it("throws a clear, named error when the selected provider's key is unset", async () => {
     await expect(
       chat(messages, { provider: "tokenrouter" })

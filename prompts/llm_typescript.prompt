@@ -11,8 +11,10 @@ Write two exported functions in `src/lib/llm.ts`:
    selected by the `LLM_PROVIDER` env var (`"minimax"` default, or
    `"tokenrouter"` / `"openai"` / `"anthropic"`), returns the raw text reply.
    TokenRouter (sponsor track) is the intelligent routing layer: an
-   OpenAI-compatible gateway at `https://api.tokenrouter.io/v1/chat/completions`
-   that picks the upstream model per request. Its `model` field comes from
+   Responses API gateway at `https://api.tokenrouter.io/v1/responses` that
+   picks the upstream model per request. Its request body uses a string
+   `input` rendered from the role/content messages and `max_output_tokens`;
+   response text comes from `output_text`. Its `model` field comes from
    `TOKENROUTER_MODEL`, defaulting to `"auto:balance"` (other modes:
    `auto:cost`, `auto:quality`, `auto:latency`).
 2. `chatJSON<T>(messages, opts?)` — calls `chat()`, parses the result as
@@ -37,3 +39,5 @@ None — this is the base module everything else depends on.
   attempts fail to parse.
 - Calling with an unset provider's API key throws a clear, named error
   rather than a generic fetch failure.
+- TokenRouter sends the documented Responses request (`/v1/responses`,
+  `input`, `max_output_tokens`) with a Bearer key and returns `output_text`.

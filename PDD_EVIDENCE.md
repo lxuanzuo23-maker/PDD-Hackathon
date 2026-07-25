@@ -70,6 +70,12 @@ _(fill in during the build)_
   (`tests/llm.test.ts`, covers the prompt's 4 acceptance criteria with a
   stubbed fetch) updated **in the same commit** per convention rule 2.
   `pdd --local sync llm` re-verification pending an LLM key (see Tooling status).
+- 2026-07-25 `llm`: TokenRouter migrated from the retired Chat Completions
+  route to its documented Responses API (`POST /v1/responses`). Prompt, code,
+  and test now assert the `input` / `max_output_tokens` request and
+  `output_text` response. A live account probe reached the endpoint but
+  returned an opaque 500, so sponsor-track verification remains blocked on
+  account/provider configuration; do not claim it until a successful live call.
 - 2026-07-25 `tts`: NEW module — ElevenLabs voice pep talk (sponsor track, P2).
   Born prompt-first: `prompts/tts_typescript.prompt` → `src/lib/tts.ts` →
   `/api/tts` route → `tests/tts.test.ts` (all 5 acceptance criteria, stubbed
