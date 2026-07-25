@@ -30,7 +30,8 @@ first; polish second.
 | Missing prompts before next edit of `ui_coach`, `tasks_api`, `rewards_api`, `ui_rewards` | Convention / compliance score | B / A |
 
 **Demo task (seeded):** `Clean the kitchen` (difficulty 2).  
-**Seeded start state:** streak `3`, ledger balance `40`, companion level `2` / xp `40`.  
+**Seeded start state:** streak `3`, ledger balance `40`, companion level `2` / xp `80` /
+`content` mood, with `lastStreakAt` set to the preceding UTC day.
 **Demo redeem item:** `Tiny hat` (cost `20`).
 
 ---
@@ -102,8 +103,10 @@ acceptance criteria, and owner.
 **Prompt owed before UI edits:** `prompts/ui_coach_typescript.prompt`
 
 **Interactions**
-1. Land with `?taskId=` → auto-send (or one-tap prefill)  
-   `"I'm stuck on Clean the kitchen"` so the demo is deterministic.
+1. Land with `?taskId=` → auto-send exactly once per `taskId`:
+   `"I'm stuck—help me start."` The API supplies the task title from
+   `taskId`; use a `useRef` guard so React development mode cannot send it
+   twice. This makes the demo deterministic.
 2. Coach replies via `POST /api/coach/chat` with empathy + micro-step.
 3. **2-minute start card** appears with description + **Start timer** button.
    - Do **not** auto-start the timer on card render (needed for TTS user-gesture later; also clearer UX).
@@ -171,6 +174,8 @@ Content-Type: application/json
 **Acceptance**
 - [ ] Submitting two specific answers returns 200 and moves to F4
 - [ ] Empty answers never hit the LLM
+- [ ] Route independently validates exactly two non-empty strings after
+      trimming; a direct malformed request returns 400 before the verifier
 
 ---
 
@@ -179,10 +184,15 @@ Content-Type: application/json
 
 **Shows**
 - Verdict badge: `accepted` | `partial` | `rejected`
+- Verifier's one-sentence, non-judgmental explanation (`verdictMessage`)
 - Multiplier (e.g. `1.5×`)
 - `+{pointsAwarded} pts`
 - New balance + streak days
-- If `rejected` / zero points: still show the verdict honestly; CTA becomes **Back to Today**
+- A P0 completion can be `accepted` or `partial`; preserve the `rejected` UI
+  state for a future zero-point verifier, but do not fabricate it from a
+  clamped `0.5×` response.
+- If a future `rejected` / zero-point result occurs: show it honestly; CTA
+  becomes **Back to Today**
 - Primary CTA when points > 0: **Spend points →** `/rewards`
 
 **Acceptance**
@@ -196,16 +206,28 @@ Content-Type: application/json
 **Prompt owed before edits:** `prompts/tasks_api_typescript.prompt`
 
 **On success (task was `open`)**
-1. Run verifier → `{ multiplier, rawVerdictText }`
-2. Map multiplier → contract verdict:
-   - `multiplier >= 1.0` → `"accepted"`
-   - `0.5 <= multiplier < 1.0` → `"partial"`
-   - (If verifier can return 0 for gaming, treat as `"rejected"` and award 0 — only if C's verifier supports it; otherwise clamp to 0.5 and `"partial"`)
-3. `calculatePoints(...)` using frozen economy constants (see §3)
-4. Transaction: mark task `done`, write `CheckIn`, write `PointsLedger`
-5. **Increment `user.streak` by 1** on the day's first successful completion (idempotent for later same-day completions: streak does not double)
-6. Load companion + ledger sum
-7. Return full `CompleteTaskResponse`
+1. Validate `answers` is exactly two non-empty strings after trimming; otherwise
+   return `400` before any database or LLM work.
+2. **Before calling the verifier:** if `task.status === "done"`, return
+   `409`. Do not spend an LLM call on an idempotent retry.
+3. Run verifier → `{ multiplier, verifierMessage }`; clamp only to the
+   supported `[0.5, 2.0]` range.
+4. Map the P0 multiplier bands:
+   - `1.5 <= multiplier <= 2.0` → `"accepted"`
+   - `0.5 <= multiplier < 1.5` → `"partial"`
+   - `"rejected"` is not emitted in P0. It requires a future verifier
+     contract with multiplier `0`, not a reinterpretation of `0.5×`.
+5. Determine whether this is the first qualifying completion on the current
+   **UTC calendar day** from `user.lastStreakAt` *before* calculating points.
+   `lastStreakAt` is required because the seeded ledger contains historical
+   task points and therefore cannot identify today's first completion.
+6. `calculatePoints(...)` uses the frozen economy formula below:
+   `round(BASE_POINTS[difficulty] * multiplier) + (isFirstToday ? 5 : 0)`,
+   capped at the remaining daily budget.
+7. In one transaction: mark task `done`, write `CheckIn` with
+   `verifierMessage`, write `PointsLedger`, and, if `isFirstToday`, increment
+   `user.streak` and set `lastStreakAt` to now.
+8. Load companion + ledger sum and return full `CompleteTaskResponse`.
 
 **Idempotency**
 - If task already `done` → `409` `{ error: "task already completed" }`
@@ -214,11 +236,12 @@ Content-Type: application/json
 ```ts
 {
   verdict: "accepted" | "partial" | "rejected";
+  verdictMessage: string;   // verifier's user-facing explanation
   multiplier: number;       // 0.5..2.0
   pointsAwarded: number;
   newBalance: number;
   streakDays: number;
-  companion: { level: number; xp: number; mood: "happy" | "neutral" | "worried" };
+  companion: { level: number; xp: number; mood: "content" | "proud" | "sleepy" | "worried" };
 }
 ```
 
@@ -226,6 +249,8 @@ Content-Type: application/json
 - [ ] First kitchen completion: streak 3→4, balance increases, task status `done`
 - [ ] Second complete on same task → 409, no double points
 - [ ] Daily cap still enforced (`DAILY_POINT_CAP = 150`)
+- [ ] A seeded `lastStreakAt` from yesterday makes the first demo completion
+      earn exactly one `+5` streak bonus
 
 ---
 
@@ -247,9 +272,15 @@ Content-Type: application/json
 
 **Demo path:** redeem **Tiny hat** (20 pts) after F4.
 
+**Seed math:** set the seeded companion to level 2 / xp 80. With the current
+`XP_PER_LEVEL = 50`, Tiny hat takes it to xp 100 / level 3. The existing
+xp 40 seed would only reach xp 60 and would *not* produce the promised
+level-up.
+
 **Acceptance**
 - [ ] Balance visible before redeem
-- [ ] Successful redeem updates balance + companion and plays celebration
+- [ ] Successful Tiny hat redeem changes companion level 2→3, updates balance,
+      and plays celebration
 - [ ] Field name is `companion` (not `companionState`)
 
 **P0 does not require** functional theme switching or skip-token streak protection — shelf display + XP on redeem is enough.
@@ -264,7 +295,7 @@ Align implementations to these constants (update `points.ts` + tests; do not lea
 | Constant | Value |
 |---|---|
 | `BASE_POINTS` | `{ 1: 10, 2: 20, 3: 40 }` |
-| `STREAK_BONUS` | flat `+5` on a completion that extends the streak |
+| `STREAK_BONUS` | flat `+5` only when `lastStreakAt` is before today in UTC |
 | `DAILY_POINT_CAP` | `150` |
 | `VERIFIER_MULTIPLIER` | `{ min: 0.5, max: 2.0 }` |
 
@@ -281,6 +312,14 @@ Align implementations to these constants (update `points.ts` + tests; do not lea
 **Acceptance**
 - [ ] UI types import from `contract.ts` (or match it 1:1)
 - [ ] `tests/points.test.ts` and `tests/contract.test.ts` agree on the same numbers
+- [ ] `CompanionState.mood` matches the existing Prisma/seed domain:
+      `"content" | "proud" | "sleepy" | "worried"` (do not invent
+      `"happy" | "neutral"`)
+- [ ] `RewardItem.kind` matches the existing Prisma/seed domain:
+      `"accessory" | "theme" | "skip-token"`; Tiny hat is `"accessory"`
+- [ ] Add `User.lastStreakAt: DateTime?` via Prisma migration and seed it to
+      yesterday for the demo user; backdate seed ledger rows as historical
+      balance, not today's completions
 
 ---
 
@@ -299,6 +338,17 @@ Align implementations to these constants (update `points.ts` + tests; do not lea
 - [ ] `npm test` includes passing verifier + coach tests
 - [ ] Iteration log filled (failing case → prompt change → fix)
 - [ ] Sponsor checkboxes in `DISCLOSURES.md` only checked if demos work
+
+**Verifier test thresholds (freeze these):**
+
+| Case | Expected multiplier | P0 outcome |
+|---|---|---|
+| Honest, specific (2 cases) | `>= 1.5` | `accepted` |
+| Lazy / generic (2 cases) | `0.5..1.0` | `partial` |
+| Gaming / unrelated (1 case) | `0.5..0.7` | `partial`, with non-accusatory message |
+
+The verifier prompt and tests must use this table. P0 does not claim that it
+can prove a lie or issue a `rejected` verdict.
 
 ---
 
@@ -326,7 +376,7 @@ all three agreeing out loud, editing that file first, then updating dependents.
 | Deliverable | Time-box | Done when |
 |---|---|---|
 | F5 complete route: streak, full response, 409 idempotency | T+0:30–2:00 | curl complete returns contract shape; streak persists |
-| F7 align `points.ts` + GET tasks/rewards field names | T+2:00–3:00 | Today/Rewards can type against contract |
+| F7 align `points.ts`, Prisma/seed enum values, `lastStreakAt`, and GET tasks/rewards field names | T+2:00–3:00 | Today/Rewards can type against contract; Tiny hat levels 2→3 |
 | Write `tasks_api` / `rewards_api` prompts before edits | with each change | CONVENTION row ✅ |
 | Keep Render deploy green | all day | health endpoint up |
 | Edge cases: daily cap, double-complete | T+3:15–4:30 | covered manually or tested |
@@ -366,12 +416,18 @@ all three agreeing out loud, editing that file first, then updating dependents.
 | Companion mood reacts to streak | CUT (old P1) | Never during freeze |
 | Functional skip-token / streak shield | CUT | Display-only shelf item OK |
 | Weekly recap screen | CUT (old P2) | Not today |
-| ElevenLabs TTS pep talk | P2 gated | Only if T+4:30 rehearsal flawless AND voice plays in recording |
+| ElevenLabs TTS pep talk | P2 gated | Existing code must not prefetch/call `/api/tts` until the T+4:30 gate passes |
 | Real auth / multi-user | CUT | Disclosed single demo user |
 | Postgres migration | CUT | SQLite ephemeral OK |
 | Render Workflows daily recap / mem0 | CUT | Not required for this demo arc |
 
-**P2 entry gate:** feature freeze rehearsal on the deployed URL passes end-to-end with real LLM calls. Then C may wire voice on the **Start timer** tap only (prefetch on card render, play on gesture, 503 → "voice unavailable"). Claim ElevenLabs on the submission form only if it demonstrably plays in the video. Disclose: voice covers the 2-minute-start card only.
+**P2 entry gate:** feature freeze rehearsal on the deployed URL passes
+end-to-end with real LLM calls. The existing TTS code remains disabled (no
+prefetch or `/api/tts` request) until this gate passes. Then C may enable
+voice only on the **Start timer** flow: prefetch once the micro-step card
+renders, play on the Start user gesture, and show `voice unavailable` for a
+503. Claim ElevenLabs on the submission form only if it demonstrably plays
+in the video. Disclose: voice covers the 2-minute-start card only.
 
 ---
 
@@ -380,7 +436,7 @@ all three agreeing out loud, editing that file first, then updating dependents.
 | Time | Checkpoint (evidence, not hope) |
 |---|---|
 | T+0:00–0:30 | Freeze this doc + `contract.ts`. A confirms deploy health. C verifies LLM key (`npm run verify:minimax` or fallback). No feature thrash. |
-| T+0:30–2:00 | A: F5 streak + response shape. B: F1 + Start button. C: coach shape + verifier tests scaffolding. |
+| T+0:30–2:00 | A: F5 streak + response shape + `lastStreakAt` migration. B: F1 + Start button. C: coach shape + verifier tests scaffolding. |
 | T+2:00 | **Complete UI connected locally** (interview → points on screen). C: submission form dry run. |
 | T+3:00 | **Deployed end-to-end walkthrough** of steps 1–5 on Render URL. Ugly OK. Broken = only priority. |
 | T+3:15–3:45 | C: verifier 5-case iteration logged. A: contract drift gone. B: polish result + rewards. |
@@ -398,9 +454,9 @@ Around T+3:30, C runs 5 canned answer pairs against `verifyCompletion`:
 
 | # | Style | Intent |
 |---|---|---|
-| 1–2 | Honest, specific | Should score ≥ 1.0 (`accepted`) |
-| 3–4 | Lazy / vague ("did it", "idk") | Should score < 1.0 (`partial`) |
-| 5 | Gaming / copy-task-title only | Should be lowest / rejected if supported |
+| 1–2 | Honest, specific | Should score ≥ 1.5 (`accepted`) |
+| 3–4 | Lazy / vague ("did it", "idk") | Should score 0.5–1.0 (`partial`) |
+| 5 | Gaming / copy-task-title only | Should score 0.5–0.7 (`partial`, never accusatory) |
 
 Process:
 1. Record the misscored case in `PDD_EVIDENCE.md`
@@ -420,8 +476,8 @@ This is scheduled scoring, not optional polish.
 | Beat | ≤30s actions |
 |---|---|
 | 1. Stuck | Today → Clean the kitchen → I'm stuck → coach offers micro-step → Start timer |
-| 2. Verified win | I'm done → answer two specific questions → show multiplier + points + streak 3→4 |
-| 3. Payoff | Rewards → redeem Tiny hat → companion celebration |
+| 2. Verified win | I'm done → answer two specific questions → show verdict message + multiplier + points + streak 3→4 |
+| 3. Payoff | Rewards → redeem Tiny hat → companion level 2→3 celebration |
 
 Let judges tap. Do not narrate over the UI.
 
@@ -435,8 +491,8 @@ Run on the **deployed** URL in an incognito window:
 - [ ] I'm stuck → coach returns real LLM micro-step (not offline fallback)
 - [ ] Start timer → countdown visible
 - [ ] I'm done → interview → complete succeeds
-- [ ] Win card shows verdict, multiplier, points, streak 4, new balance
-- [ ] Redeem Tiny hat → celebration + companion update
+- [ ] Win card shows verdict message, multiplier, points, streak 4, new balance
+- [ ] Redeem Tiny hat → level 2→3 celebration + companion update
 - [ ] Refresh Today: kitchen task no longer open / status done
 - [ ] Kill LLM key briefly → labeled offline, not a silent fake
 - [ ] `npm test` green locally
