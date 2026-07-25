@@ -88,3 +88,11 @@ _(fill in during the build)_
   rewritten Today page. The screens use explicit `NEXT_PUBLIC_UI_DATA_MODE`
   fixtures with a visible label only; live route failures remain labeled
   errors while Person A/C deliver the pivot API contracts.
+- 2026-07-25 `llm` / `coach` / `verifier`: C pivot update. The LLM wrapper
+  now accepts vision content and exposes `imageMessage`; a stubbed-fetch test
+  covers TokenRouter image serialization. Coach accepts an optional traits
+  profile and reduces intensity before explicitly asking whether to change
+  approach. Verifier accepts the third "How did this feel?" answer while
+  retaining two-answer compatibility until the frozen contract and API route
+  are migrated as a team. Prompts and code were updated together. Local test
+  execution is pending because this environment cannot resolve the npm registry.

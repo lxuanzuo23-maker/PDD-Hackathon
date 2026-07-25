@@ -28,6 +28,15 @@ Read provider credentials from environment variables
 credentials for the selected provider are absent — this should fail loudly at
 the call site, not silently return a canned reply (per the "no hidden fakes" rule).
 
+## Vision-board input
+
+`messages` must support either text content or ordered content parts:
+`{ type: "text", text: string }` and `{ type: "image_url", imageUrl: string,
+detail?: "low"|"high"|"auto" }`. Export `imageMessage(prompt, imageUrl)` for
+the traits module. Preserve text-only callers. Map images to the
+OpenAI-compatible `image_url` request shape; Anthropic accepts base64 image
+data URLs and must clearly reject unsupported URL inputs.
+
 # Dependencies
 None — this is the base module everything else depends on.
 
@@ -44,3 +53,4 @@ None — this is the base module everything else depends on.
   `choices[0].message.content`.
 - With `TOKENROUTER_MODEL` unset or set to legacy `"auto:balance"`, TokenRouter
   uses the verified `"google/gemini-3.5-flash-lite"` default.
+- A Vision Board image becomes an OpenAI-compatible `image_url` content part.

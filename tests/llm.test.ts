@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chat, chatJSON } from "../src/lib/llm";
+import { chat, chatJSON, imageMessage } from "../src/lib/llm";
 
 // Acceptance criteria from prompts/llm_typescript.prompt — no real network:
 // fetch is stubbed to play the provider.
@@ -91,5 +91,19 @@ describe("chat provider selection", () => {
       // @ts-expect-error deliberately bad provider
       chat(messages, { provider: "carrier-pigeon" })
     ).rejects.toThrow("Unknown LLM provider");
+  });
+
+  it("maps a Vision Board image into an OpenAI-compatible image_url part", async () => {
+    process.env.TOKENROUTER_API_KEY = "tr_test";
+    stubFetchReplies("themes");
+    await chat(imageMessage("Describe themes", "https://example.com/vision.png"), {
+      provider: "tokenrouter",
+    });
+
+    const request = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+    expect(request.messages[0].content).toEqual([
+      { type: "text", text: "Describe themes" },
+      { type: "image_url", image_url: { url: "https://example.com/vision.png", detail: "low" } },
+    ]);
   });
 });

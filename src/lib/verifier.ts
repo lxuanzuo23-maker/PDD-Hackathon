@@ -6,13 +6,15 @@ export interface VerifierResult {
 }
 
 const SYSTEM_PROMPT = `You are the completion verifier for TinyWins. A user has claimed a task
-is done and answered two follow-up questions. Judge plausibility and
+is done and answered follow-up questions, including how the work felt. Judge plausibility and
 effort — not to catch a liar, but to reward honest, specific answers over
 vague ones.
 
 Plausibility: could the answers describe something a person actually did
 for THIS task? Generic answers that could apply to any task score low.
 Effort: do the answers include concrete, specific detail?
+Feeling: use the reported feeling as supporting reflection context. A hard or
+negative feeling is never, by itself, a reason to penalize the user.
 
 Scoring:
 - 2.0x: specific, plausible, shows real effort or reflection.
@@ -27,14 +29,14 @@ Respond with ONLY a JSON object of the shape:
 
 export async function verifyCompletion(
   task: { title: string; difficulty: 1 | 2 | 3 },
-  answers: [string, string]
+  answers: [string, string] | [string, string, string]
 ): Promise<VerifierResult> {
   const result = await chatJSON<VerifierResult>(
     [
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Task: "${task.title}" (difficulty ${task.difficulty}/3)\nQ1 answer: ${answers[0]}\nQ2 answer: ${answers[1]}`,
+        content: `Task: "${task.title}" (difficulty ${task.difficulty}/3)\nWhat I did: ${answers[0]}\nWhat was challenging: ${answers[1]}\nHow it felt: ${answers[2] ?? "Not provided"}`,
       },
     ],
     { temperature: 0.2 }
