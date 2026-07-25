@@ -83,3 +83,8 @@ _(fill in during the build)_
   fetch), one commit. Voice-off is a labeled 503 fallback; live playback
   verification pending `ELEVENLABS_API_KEY`. Coach-page prefetch/play button
   is a `ui_coach` edit — logged below, prompt still owed by B.
+- 2026-07-25 Person B pivot UI: prompt-first chains added for the UI data
+  boundary, onboarding, shared check-in, Coach, Growth, Rewards, and the
+  rewritten Today page. The screens use explicit `NEXT_PUBLIC_UI_DATA_MODE`
+  fixtures with a visible label only; live route failures remain labeled
+  errors while Person A/C deliver the pivot API contracts.

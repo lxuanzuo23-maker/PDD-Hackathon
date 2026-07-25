@@ -1,0 +1,20 @@
+# Intent
+Build the shared three-question goal check-in UI used from both Today and
+Coach. It collects what happened, the hardest part, and a daily mood before
+submitting through the UI data boundary.
+
+# Requirements
+- Render accessible validation and labeled submission failures.
+- Require two non-empty text answers and one of the five Mood values.
+- Render a reusable honest-result card from `CheckInResult`.
+
+# Interfaces
+Use `Mood` and `CheckInResult` from `src/lib/ui-data.ts`.
+
+# Output
+`src/components/CheckInFlow.tsx`
+
+# Acceptance criteria
+- Invalid input does not submit.
+- Both entry points receive the same result/error behavior.
+- The result shows verdict message, points, multiplier, streak, and balance.

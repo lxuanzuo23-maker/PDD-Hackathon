@@ -1,0 +1,23 @@
+# Intent
+Build a transparent Rewards shelf that makes the earned-points loop legible.
+It supports a companion's level-up celebration only when a successful redeem
+actually increases the returned level.
+
+# Requirements
+- Fetch `companion`, `items`, and `pointsBalance` from the UI data boundary.
+- Disable unaffordable rewards and state how many points are missing.
+- Render per-item redemption/loading/error states.
+- Display accessory/theme/skip-token labels and companion mood without
+  inventing functional reward effects.
+
+# Interfaces
+Use `RewardsResponse`, `Reward`, `Companion`, `getRewards`, `redeemReward`,
+and `isFixtureMode` from `src/lib/ui-data.ts`.
+
+# Output
+`src/app/rewards/page.tsx`
+
+# Acceptance criteria
+- A redeem result updates balance and companion from the response.
+- Level-up UI appears only when the returned level increases.
+- A live API failure is labeled and never replaced with fixture data.
