@@ -18,6 +18,7 @@ Modules and owners (✅ = prompt exists today):
 | `coach` ✅ | `coach_typescript.prompt` | `src/lib/coach.ts` | C |
 | `verifier` ✅ | `verifier_typescript.prompt` | `src/lib/verifier.ts` | C |
 | `ui-today` ✅ | `ui-today_typescript.prompt` | `src/app/today/page.tsx` (via `--output`) | B |
+| `tts` ✅ | `tts_typescript.prompt` | `src/lib/tts.ts` + `/api/tts` route + `tests/tts.test.ts` | C |
 | `tasks_api` | _write before next edit_ | `src/app/api/tasks/**` route handlers | A |
 | `rewards_api` | _write before next edit_ | `src/app/api/rewards/**` route handlers | A |
 | `ui_coach` | _write before next edit_ | `src/app/coach/page.tsx` | B |

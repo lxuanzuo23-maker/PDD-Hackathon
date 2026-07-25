@@ -27,7 +27,16 @@ friction mechanism against casual lying, not a fraud-proof system.
   doc, to save setup time. All feature logic, prompt iteration, and content
   were built during the 6-hour build window.
 
+## Voice covers one moment only
+The ElevenLabs pep talk exists on the coach's 2-minute-start card, nowhere
+else. Without `ELEVENLABS_API_KEY` the card shows a labeled "voice offline"
+state — the demo arc works identically with voice dark. Audio for a repeated
+pep talk is served from an in-memory cache to conserve sponsor credits.
+
 ## Sponsor tracks claimed
 - [ ] MiniMax — confirm the integration is actually working before claiming
       the track at submission.
-- [ ] ElevenLabs — only claim if the voice feature actually shipped (P2).
+- [ ] TokenRouter — wired as a selectable provider (`LLM_PROVIDER=tokenrouter`);
+      only claim if the demo actually routes through it.
+- [ ] ElevenLabs — only claim if the voice pep talk audibly plays in the demo
+      (integration is wired; needs the key + a played moment in the video).

@@ -13,6 +13,7 @@ update this continuously, not at the end.
 | `prompts/points_typescript.prompt` | `src/lib/points.ts` | `src/app/api/tasks/[id]/complete/route.ts` | `tests/points.test.ts` ✅ passing |
 | `prompts/llm_typescript.prompt` | `src/lib/llm.ts` | `coach.ts`, `verifier.ts` | `tests/llm.test.ts` ✅ passing |
 | `prompts/ui-today_typescript.prompt` | `src/app/today/page.tsx` | Today screen | manual + `pdd test` (story) |
+| `prompts/tts_typescript.prompt` | `src/lib/tts.ts` | `src/app/api/tts/route.ts`, coach 2-minute-start card | `tests/tts.test.ts` ✅ passing |
 
 `src/lib/contract.ts` + `tests/contract.test.ts` ✅ (4 tests passing) pin the API/points
 constants the prompts reference.
@@ -38,6 +39,7 @@ change:
 |---|---|---|
 | `src/app/api/tasks/route.ts` | type-guard `difficulty` so the strict build passes | `tasks_api` (A) |
 | `src/app/coach/page.tsx` | wrap `useSearchParams()` in a Suspense boundary | `ui_coach` (B) |
+| `src/app/coach/page.tsx` | prefetch pep-talk audio on micro-step, play-on-tap button, labeled "voice offline" state | `ui_coach` (B) |
 | `src/app/api/rewards/route.ts` | `export const dynamic = "force-dynamic"` — live data must not be build-time cached | `rewards_api` (A) |
 
 ## The planned iteration (do this around T+3:30)
@@ -68,3 +70,9 @@ _(fill in during the build)_
   (`tests/llm.test.ts`, covers the prompt's 4 acceptance criteria with a
   stubbed fetch) updated **in the same commit** per convention rule 2.
   `pdd --local sync llm` re-verification pending an LLM key (see Tooling status).
+- 2026-07-25 `tts`: NEW module — ElevenLabs voice pep talk (sponsor track, P2).
+  Born prompt-first: `prompts/tts_typescript.prompt` → `src/lib/tts.ts` →
+  `/api/tts` route → `tests/tts.test.ts` (all 5 acceptance criteria, stubbed
+  fetch), one commit. Voice-off is a labeled 503 fallback; live playback
+  verification pending `ELEVENLABS_API_KEY`. Coach-page prefetch/play button
+  is a `ui_coach` edit — logged below, prompt still owed by B.

@@ -1,0 +1,41 @@
+# Role
+You are the single integration point between TinyWins and ElevenLabs
+text-to-speech (sponsor track). Voice is an enhancement layered on the
+2-minute-start card — it must never block or break the core demo arc.
+
+# Requirements
+Write one exported function in `src/lib/tts.ts`:
+
+1. `synthesizeSpeech(text)` — converts text to speech via
+   `POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}` with the
+   `xi-api-key` header, returning the audio bytes (`ArrayBuffer`, mp3).
+
+Behavior:
+- Read `ELEVENLABS_API_KEY` from the environment at call time and throw a
+  clear error naming the variable when it is absent (fail loudly at the
+  call site; the API route above translates that into a labeled
+  `503 "voice offline"` — never a hidden canned reply).
+- `ELEVENLABS_VOICE_ID` (default: premade voice `21m00Tcm4TlvDq8ikWAM`)
+  and `ELEVENLABS_MODEL_ID` (default: `eleven_multilingual_v2`) are
+  env-overridable.
+- Trim input and cap it at 300 characters — pep talks are short; protect
+  sponsor credits.
+- Cache synthesized audio in an in-memory `Map` keyed by the capped text,
+  so demo rehearsals replaying the same pep talk cost one API call.
+- Surface upstream failures as thrown errors that include the HTTP status.
+
+Consumed by `src/app/api/tts/route.ts` (thin route: `{text}` in,
+`audio/mpeg` out, 400 on missing text, 503 labeled "voice offline" on any
+failure). The coach page prefetches audio when a micro-step card renders
+and plays it only on a user tap (autoplay-safe).
+
+# Dependencies
+None — sibling of `llm.ts`; other modules never call ElevenLabs directly.
+
+# Acceptance criteria (see tests/tts.test.ts)
+- Throws a named `ELEVENLABS_API_KEY` error when the key is unset.
+- Sends `xi-api-key`, the text, and `model_id` to the voice-id endpoint.
+- Returns the audio bytes on success.
+- Throws an error containing the HTTP status when ElevenLabs responds
+  with a non-OK status.
+- A repeated identical text results in exactly one upstream call (cache).

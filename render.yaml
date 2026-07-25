@@ -25,3 +25,7 @@ services:
         sync: false
       - key: TOKENROUTER_MODEL
         sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        sync: false

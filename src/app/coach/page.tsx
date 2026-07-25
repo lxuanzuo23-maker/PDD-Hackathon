@@ -17,6 +17,10 @@ function CoachChat() {
   const [input, setInput] = useState("");
   const [microStep, setMicroStep] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<
+    "idle" | "loading" | "ready" | "offline"
+  >("idle");
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -24,6 +28,38 @@ function CoachChat() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  // Prefetch the pep-talk audio when a micro-step lands; playback happens
+  // only on the user's tap so browser autoplay rules never block it.
+  useEffect(() => {
+    if (!microStep) return;
+    let cancelled = false;
+    let url: string | null = null;
+    setVoiceStatus("loading");
+    setVoiceUrl(null);
+
+    fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: microStep }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("voice offline");
+        const blob = await res.blob();
+        if (cancelled) return;
+        url = URL.createObjectURL(blob);
+        setVoiceUrl(url);
+        setVoiceStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setVoiceStatus("offline");
+      });
+
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [microStep]);
 
   function startTimer(seconds: number) {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -86,6 +122,17 @@ function CoachChat() {
             <p className="font-display text-3xl text-spark">
               {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}
             </p>
+          )}
+          {voiceStatus === "ready" && voiceUrl && (
+            <button
+              onClick={() => new Audio(voiceUrl).play()}
+              className="text-xs underline text-moss-700"
+            >
+              🔊 Play pep talk
+            </button>
+          )}
+          {voiceStatus === "offline" && (
+            <p className="text-xs text-moss-700/60">voice offline</p>
           )}
         </div>
       )}
