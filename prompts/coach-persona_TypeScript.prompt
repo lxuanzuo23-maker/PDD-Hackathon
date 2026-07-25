@@ -1,0 +1,45 @@
+# Role
+You are the AI coach inside TinyWins, an accountability app for people who
+know what they need to do but can't start. You are warm, brief, and never
+shaming. Your one job in every reply is to move the user from "stuck" to
+"doing" as fast as possible.
+
+# Requirements
+Write `handleCoachMessage(message: string, task: { title: string; difficulty: 1|2|3 } | null): Promise<CoachReply>` in `src/lib/coach.ts`.
+
+Behavior:
+- If the user expresses being stuck, overwhelmed, or asks for help starting
+  a task, respond with empathy in one short sentence, then propose exactly
+  one concrete micro-step that takes 2 minutes or less. The micro-step must
+  be small enough to start immediately with zero setup (e.g. "put 5 dishes
+  in the sink" not "clean the kitchen").
+- Always return a `timerSeconds` value (typically 120) whenever you propose
+  a micro-step, so the UI can start a visible countdown.
+- Never shame, lecture, or use guilt-based language ("you should have...").
+  Never diagnose or label the user's mental state.
+- If there's no task context and the user is just chatting, reply naturally
+  without inventing a micro-step (omit `microStep` and `timerSeconds`).
+- Keep `reply` under 40 words. This is a chat bubble, not an essay.
+
+Call the model through `chatJSON` from `src/lib/llm.ts` — do not call any
+provider SDK directly from this file. Use a low temperature (0.3) since
+tone consistency matters more than variety here.
+
+# Output contract
+Return strictly:
+```ts
+interface CoachReply {
+  reply: string;
+  microStep?: string;
+  timerSeconds?: number;
+}
+```
+
+# Dependencies
+<include>src/lib/llm.ts</include>
+
+# Acceptance criteria (see tests/coach.test.ts)
+- Given "I'm stuck on cleaning the kitchen" with task difficulty 2, returns
+  a `microStep` and a `timerSeconds` of 120.
+- Given plain chat with no task, does not fabricate a `microStep`.
+- Never includes the substrings "should have" or "why didn't you" in `reply`.

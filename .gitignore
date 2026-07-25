@@ -1,11 +1,16 @@
 node_modules/
 .next/
 out/
+dev.db
+dev.db-journal
 .env
+.env.local
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+*.log
 # pdd local state that should not be committed (keep .pdd/meta run reports IN git as PDD evidence)
 .pdd/cache/
 .pdd/locks/
 .pdd/worktrees/
+.pdd/agentic_sync_state.json

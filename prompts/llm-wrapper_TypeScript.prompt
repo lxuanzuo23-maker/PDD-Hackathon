@@ -1,0 +1,34 @@
+# Role
+You are the single integration point between TinyWins and any LLM provider.
+Every other module calls this file — never a provider SDK directly — so
+switching providers during the hackathon (MiniMax -> fallback) is a 1-line
+environment variable change, not a code change.
+
+# Requirements
+Write two exported functions in `src/lib/llm.ts`:
+
+1. `chat(messages, opts?)` — sends messages to whichever provider is
+   selected by the `LLM_PROVIDER` env var (`"minimax"` default, or
+   `"openai"` / `"anthropic"` as fallback), returns the raw text reply.
+2. `chatJSON<T>(messages, opts?)` — calls `chat()`, parses the result as
+   JSON, and retries exactly once with a stricter "reply with ONLY JSON"
+   instruction if the first parse fails. Throws if both attempts fail.
+
+Support `temperature` and `maxTokens` in `opts`, defaulting to 0.4 and 500.
+Read provider credentials from environment variables
+(`MINIMAX_API_KEY`/`MINIMAX_GROUP_ID`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
+and throw a clear error naming the missing variable if credentials for the
+selected provider are absent — this should fail loudly at the call site,
+not silently return a canned reply (per the "no hidden fakes" rule).
+
+# Dependencies
+None — this is the base module everything else depends on.
+
+# Acceptance criteria (see tests/llm.test.ts)
+- `chatJSON` successfully parses a clean JSON response on the first try.
+- `chatJSON` retries once and succeeds if the first response is JSON
+  wrapped in markdown fences.
+- `chatJSON` throws (does not silently return null/undefined) if both
+  attempts fail to parse.
+- Calling with an unset provider's API key throws a clear, named error
+  rather than a generic fetch failure.

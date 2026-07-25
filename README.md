@@ -1,61 +1,51 @@
 # TinyWins
 
-An emotionally supportive accountability app: an AI coach shrinks any task to a 2-minute
-first step, interviews you when you claim it's done, and pays points by effort, not by tap.
-Points level up your companion.
+An emotionally supportive accountability app: an AI coach helps you start,
+verifies you finished, and pays you in points you spend on your companion.
 
-Built at the PDD Hackathon, prompt-first. Prompts in `/prompts` are the source of truth;
-code is generated output.
-
-## Problem
-
-<!-- TODO before submission: 2 sentences. People who know what to do but can't start. -->
-
-## Target user
-
-<!-- TODO: specific, not "everyone". -->
-
-## Setup
-
-```bash
-npm install
-cp .env.example .env   # add MINIMAX_API_KEY
-npm run dev            # http://localhost:3000
-```
-
-## Run & test commands
-
-```bash
-npm run dev              # local dev server
-npm test                 # unit tests
-npm run build && npm start
-npm run verify:minimax   # confirms the LLM key works
-```
+**Target user:** people who know what they need to do but can't start.
 
 ## Architecture
+- Next.js 14 (App Router) + TypeScript, single repo, single deployed service
+- SQLite via Prisma (ephemeral on Render — see DISCLOSURES.md)
+- LLM: MiniMax for coach + verifier, routed through `src/lib/llm.ts` so
+  swapping providers is a one-line env var change
+- Tailwind, mobile-first
 
-Next.js 15 (App Router) on Render, single service. API routes under `src/app/api/*`,
-contract frozen in `src/lib/contract.ts`. LLM calls (coach + verifier) go through
-`src/lib/llm.ts` to MiniMax. See `prompts/CONVENTION.md` for the PDD module map.
+## Setup
+```bash
+npm install
+cp .env.example .env   # fill in MINIMAX_API_KEY / MINIMAX_GROUP_ID or a fallback key
+npx prisma migrate dev --name init
+npm run seed
+npm run dev
+```
 
-<!-- TODO: update if the shape changes. -->
+## Run & test
+```bash
+npm test          # vitest — points, verifier, coach, llm
+npm run seed       # re-seed demo data (also runs on Render boot)
+```
 
-## PDD evidence
+## Prompt-Driven Development (PDD CLI)
+Prompts in `/prompts` are the source of truth; code is generated output.
 
-See `PDD_EVIDENCE.md` for the prompt -> module -> usage -> test chains and the iteration log.
+```bash
+uv tool install pdd-cli
+pdd setup                 # detects agentic CLIs, configures API keys/models
+pdd generate --output src/lib/verifier.ts prompts/verifier_TypeScript.prompt
+pdd generate --output src/lib/coach.ts     prompts/coach-persona_TypeScript.prompt
+pdd generate --output src/lib/points.ts    prompts/points-engine_TypeScript.prompt
+pdd generate --output src/lib/llm.ts       prompts/llm-wrapper_TypeScript.prompt
+```
+
+When code needs to change, edit the prompt and regenerate — don't hand-patch
+generated files without updating the prompt (the rubric deducts for this).
 
 ## What we built today
-
-Everything. The repo was empty at build start; the scaffold (this commit) was generated
-at the venue at build start, with AI assistance, and is disclosed in `DISCLOSURES.md`.
-
-<!-- TODO before submission: 3 bullets on what shipped. -->
+See the demo arc and scope guardrail in the design doc. P0: task list, coach
+chat with 2-minute start + timer, verified completion with effort
+multiplier, points + streak, rewards shelf + companion level-up.
 
 ## Known limitations
-
-See `DISCLOSURES.md`. Honest list, per the rules: unfinished is eligible, faking is not.
-
-## Attribution
-
-Next.js, Tailwind, Vitest, Prisma (licenses in node_modules). AI assistance: Claude
-(scaffold + module generation via pdd CLI), MiniMax (runtime coach/verifier LLM).
+See `DISCLOSURES.md`.

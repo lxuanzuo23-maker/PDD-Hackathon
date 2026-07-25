@@ -6,11 +6,16 @@ services:
     runtime: node
     plan: free
     buildCommand: npm ci && npm run build
-    startCommand: npm run start
+    # Seed wipes + re-fills the ephemeral SQLite db on every boot (see DISCLOSURES.md)
+    startCommand: npm run seed && npm run start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      - key: DATABASE_URL
+        value: file:./dev.db
       - key: MINIMAX_API_KEY
+        sync: false
+      - key: MINIMAX_GROUP_ID
         sync: false
       - key: MINIMAX_MODEL
         sync: false

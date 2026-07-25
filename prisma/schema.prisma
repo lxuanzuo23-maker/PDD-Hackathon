@@ -1,0 +1,101 @@
+// Prisma schema for TinyWins.
+// SQLite + ephemeral disk on Render: data resets on redeploy. This is a
+// known, disclosed limitation (see DISCLOSURES.md) — acceptable for a demo.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  streak    Int      @default(0)
+  createdAt DateTime @default(now())
+
+  tasks       Task[]
+  ledger      PointsLedger[]
+  redemptions Redemption[]
+  companion   CompanionState?
+}
+
+model Task {
+  id         String    @id @default(cuid())
+  userId     String
+  title      String
+  difficulty Int // 1 | 2 | 3
+  status     String    @default("open") // open | done
+  createdAt  DateTime  @default(now())
+  completedAt DateTime?
+
+  user     User      @relation(fields: [userId], references: [id])
+  checkIns CheckIn[]
+
+  @@index([userId])
+}
+
+// One row per completed micro-interview: the coach's two questions and
+// the verifier's plausibility/effort judgment for that completion.
+model CheckIn {
+  id         String   @id @default(cuid())
+  taskId     String
+  answers    String // JSON-encoded string[] of the user's two answers
+  verdict    String // short verifier explanation, shown to the user
+  multiplier Float // 0.5x - 2.0x, effort-based
+  createdAt  DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id])
+
+  @@index([taskId])
+}
+
+// Append-only ledger. Balance is always derived by summing amount, never
+// stored directly — this is what makes the daily anti-gaming cap auditable.
+model PointsLedger {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Int
+  reason    String // e.g. "task-complete", "redemption", "streak-bonus"
+  taskId    String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model RewardItem {
+  id          String @id @default(cuid())
+  name        String
+  description String
+  cost        Int
+  kind        String // "theme" | "accessory" | "skip-token"
+
+  redemptions Redemption[]
+}
+
+model Redemption {
+  id           String   @id @default(cuid())
+  userId       String
+  rewardItemId String
+  createdAt    DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id])
+  rewardItem RewardItem @relation(fields: [rewardItemId], references: [id])
+
+  @@index([userId])
+}
+
+model CompanionState {
+  id     String @id @default(cuid())
+  userId String @unique
+  level  Int    @default(1)
+  xp     Int    @default(0)
+  mood   String @default("content") // content | proud | sleepy | worried
+
+  user User @relation(fields: [userId], references: [id])
+}

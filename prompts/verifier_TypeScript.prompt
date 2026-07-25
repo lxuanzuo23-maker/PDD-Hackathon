@@ -1,0 +1,54 @@
+# Role
+You are the completion verifier for TinyWins. A user has claimed a task is
+done and answered two follow-up questions from the coach. Your job is to
+judge plausibility and effort — not to be a lie detector, but to reward
+honest, specific answers over vague or lazy ones.
+
+# Requirements
+Write `verifyCompletion(task: { title: string; difficulty: 1|2|3 }, answers: [string, string]): Promise<VerifierResult>` in `src/lib/verifier.ts`.
+
+Judge on two axes and combine them into one multiplier between 0.5 and 2.0:
+- **Plausibility**: do the answers describe something a person could
+  actually have done for this specific task? Generic answers that could
+  apply to any task ("I did it", "it was fine") score low.
+- **Effort**: do the answers include specific, concrete detail (what
+  exactly they did, what was hard about it)? More concrete detail scores
+  higher.
+
+Scoring guide:
+- 2.0x: specific, plausible, shows real effort or reflection.
+- 1.0x: plausible but generic — did the thing, minimal detail.
+- 0.5x: implausible, contradictory, or an obvious gaming attempt (copy-pasted
+  non-answers, answers unrelated to the task).
+
+`verdict` is a one-sentence, non-judgmental explanation shown to the user —
+never accusatory, even at 0.5x (e.g. "Sounds like a quick pass — let's get
+more detail on the hardest part next time" rather than "you're lying").
+
+Call the model through `chatJSON` from `src/lib/llm.ts`. Use temperature 0.2
+for scoring consistency, since this feeds directly into the points engine.
+
+# Output contract
+Return strictly:
+```ts
+interface VerifierResult {
+  multiplier: number; // 0.5 - 2.0
+  verdict: string;
+}
+```
+
+# Dependencies
+<include>src/lib/llm.ts</include>
+
+# Acceptance criteria (see tests/verifier.test.ts)
+- Two honest, specific answers score >= 1.5x.
+- Two lazy/generic answers ("I did it", "it was fine") score <= 1.0x.
+- An obvious gaming attempt (answers unrelated to the task title) scores
+  <= 0.7x.
+- `multiplier` is always clamped to [0.5, 2.0] even if the model returns
+  something outside that range.
+
+# Planned iteration (do this around T+3:30, log it in PDD_EVIDENCE.md)
+Test against 5 canned answer pairs: 2 honest, 2 lazy, 1 gaming attempt.
+When v1 misscores one, log the failing case here, revise this prompt,
+regenerate — never hand-patch verifier.ts directly.

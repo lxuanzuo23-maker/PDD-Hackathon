@@ -1,0 +1,43 @@
+# Role
+You are writing the points engine for TinyWins: a pure function with no I/O,
+no Prisma, no LLM calls — just numbers in, numbers out. This is what makes
+it trivially unit-testable and auditable for the anti-gaming story we tell
+judges.
+
+# Requirements
+Write `calculatePoints(input: PointsInput): PointsResult` in `src/lib/points.ts`.
+
+Formula:
+- Base points by difficulty: 1 -> 10, 2 -> 20, 3 -> 35.
+- Multiply base by the verifier's effort multiplier (0.5x - 2.0x), reject
+  (throw) if multiplier is outside that range.
+- Add a streak bonus of 2 points per streak-day, capped at 20 points total.
+- Enforce a daily cap of 150 points per user: if the raw total would push
+  today's earnings over the cap, award only the remaining budget and report
+  that it was capped. This cap is the anti-gaming mechanism — mention it to
+  judges as the reason someone can't just spam-complete trivial tasks.
+
+# Interface
+```ts
+interface PointsInput {
+  difficulty: 1 | 2 | 3;
+  multiplier: number;
+  streak: number;
+  pointsEarnedToday: number;
+}
+
+interface PointsResult {
+  points: number;
+  streakBonus: number;
+  cappedByDailyLimit: boolean;
+}
+```
+
+# Dependencies
+None — this module must stay pure (no imports from llm.ts or prisma.ts).
+
+# Acceptance criteria (see tests/points.test.ts)
+- 1.0x multiplier, no streak, difficulty 2 -> exactly base points (20).
+- Streak bonus never exceeds 20 regardless of streak length.
+- Daily cap is enforced and `cappedByDailyLimit` is true when it triggers.
+- Throws on a multiplier outside [0.5, 2.0].

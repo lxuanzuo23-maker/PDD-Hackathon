@@ -1,22 +1,33 @@
 # Disclosures
 
-Per the rules: honest labeling of what's mocked, broken, borrowed, or fake.
-Update this file the moment something ships in a limited state, not at 7:40 PM.
+Honest accounting of what's real, what's mocked, and what's cut. Update this
+continuously — don't leave it to the last hour.
 
-## Standing disclosures (true from build start)
+## No real auth
+There is one seeded demo user (`Demo User`). There is no login, no sessions,
+no password. Every API call operates on that single user.
 
-- The repo was empty at build start. The initial scaffold (Next.js config, frozen API
-  contract types, health endpoint, this file) was generated with AI assistance (Claude)
-  at the venue at build start, before feature code.
-- No real authentication. Single demo user; anyone with the URL sees the demo account.
-- Database is SQLite on Render's ephemeral disk: data resets on redeploy. A seed script
-  restores the demo state on boot. Fine for demo, not production.
-- The completion verifier is an LLM plausibility check on the user's answers. It raises
-  the honesty bar; it is not proof the task happened.
-- Runtime LLM: MiniMax. If MiniMax is unreachable, the coach shows a labeled
-  "coach offline" state. There are no hidden canned replies.
+## Database resets on redeploy
+SQLite runs on Render's ephemeral disk. Every redeploy wipes and re-seeds
+the database via `npm run seed`. This is a known tradeoff for demo speed,
+not a production design.
 
-## Added during the day
+## Verifier is plausibility-scoring, not proof
+The completion verifier judges plausibility and effort from two short
+answers. It cannot and does not confirm a task was actually done — it's a
+friction mechanism against casual lying, not a fraud-proof system.
 
-<!-- e.g. "Rewards shelf has one redeemable item; theme items are display-only." -->
-- (nothing yet)
+## Mocked UI states (update as B builds)
+- [ ] List any screens/components still running against mocked API
+      responses instead of the real, deployed endpoints here.
+
+## What was borrowed vs. built today
+- Scaffold (this repo skeleton, Prisma schema, API route stubs, prompt
+  files) was generated ahead of the clock starting, per the team's design
+  doc, to save setup time. All feature logic, prompt iteration, and content
+  were built during the 6-hour build window.
+
+## Sponsor tracks claimed
+- [ ] MiniMax — confirm the integration is actually working before claiming
+      the track at submission.
+- [ ] ElevenLabs — only claim if the voice feature actually shipped (P2).
