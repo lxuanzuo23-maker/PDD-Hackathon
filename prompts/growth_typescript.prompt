@@ -1,0 +1,46 @@
+# Role
+You are writing the pure date/streak math behind the growth dashboard for
+TinyWins. Same discipline as points.ts: no I/O, no Prisma, plain data in,
+plain numbers out — trivially unit-testable.
+
+# Requirements
+Write two functions in `src/lib/growth.ts`:
+
+**`longestStreak(checkInDays: string[]): number`**
+- Input is a list of `"YYYY-MM-DD"` (UTC) strings, one entry per check-in;
+  duplicates on the same day are expected and must not inflate the count.
+- Returns the length of the longest run of *consecutive* calendar days
+  present in the input, regardless of input order.
+- Empty input returns `0`.
+
+**`buildRunningBalance(entries: DailyLedgerEntry[], days: string[], startingBalance?: number): number[]`**
+- `entries` are `{ date: "YYYY-MM-DD", amount: number }` ledger rows (can
+  include multiple entries for the same day — sum them).
+- `days` is an ascending ordered list of days to report on.
+- `startingBalance` (default 0) is the running total carried in from
+  before the first day in `days` — the caller is responsible for summing
+  everything prior; this function should not need to know about "all
+  history," just the window plus a starting number.
+- Returns one cumulative balance per day in `days`, in the same order,
+  correctly carrying the balance forward through days with no entries.
+
+# Interface
+```ts
+interface DailyLedgerEntry {
+  date: string; // "YYYY-MM-DD", UTC
+  amount: number;
+}
+```
+
+# Dependencies
+None — this module must stay pure, same rule as points.ts.
+
+# Acceptance criteria (see tests/growth.test.ts)
+- `longestStreak([])` -> `0`.
+- Days `20, 21, 22, 24` (gap at 23) -> longest streak `3`, not `4`.
+- Duplicate same-day entries don't inflate the streak count.
+- Unsorted input produces the same result as sorted input.
+- `buildRunningBalance` with no entries carries `startingBalance` forward
+  unchanged across every day.
+- Multiple same-day entries are summed before being added to the running
+  total.

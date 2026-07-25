@@ -1,0 +1,42 @@
+# Role
+You are building the first-run onboarding / traits quiz for TinyWins. This
+is what a brand-new user sees before they ever reach `/today`. It both
+profiles the user and sets today's mood baseline.
+
+# Requirements
+Build `src/app/onboarding/page.tsx` as a client component, a single-page
+wizard with these steps in order:
+
+1. **Age** — number input, required, reasonable bounds 13–120.
+2. **Gender** — select: `female | male | non-binary | prefer not to say`.
+3. **Current habit to improve** — optional short text ("Is there something
+   you're already doing that you'd like to get better at?").
+4. **New habit to build** — optional short text ("Is there something new
+   you'd like to start?").
+5. **Vision board** — optional single image upload with a client-side
+   preview; user can skip this step entirely.
+6. **Mood today** — required, a 5-option tap scale (not free text):
+   `rough | low | okay | good | great`, shown as labeled emoji buttons.
+
+On final submit, `POST /api/onboarding` with all collected fields (base64
+data URL for the image if provided). On success, redirect to `/today`.
+
+Before rendering the wizard, `GET /api/onboarding` on mount — if it reports
+`completed: true`, skip straight to `/today` instead of showing the quiz
+again (this is a one-time first-run flow, not a repeatable one).
+
+**Note for whoever builds the daily check-in later:** step 6 (mood) only
+covers day one. Asking mood again on subsequent days is a separate,
+not-yet-specced component — do not try to solve daily recurrence here.
+
+# Dependencies
+<include>src/app/api/onboarding/route.ts</include>
+
+# Acceptance criteria
+- Age and mood are required to submit; habit fields and vision board are
+  not — submit must succeed with only age/gender/mood filled in.
+- Re-visiting `/onboarding` after completion redirects to `/today` instead
+  of re-showing the quiz.
+- Image upload shows a preview and can be removed/replaced before submit.
+- Loading and error states (failed submit) are handled without losing the
+  user's already-entered answers.

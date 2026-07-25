@@ -8,26 +8,77 @@ async function main() {
   await prisma.redemption.deleteMany();
   await prisma.pointsLedger.deleteMany();
   await prisma.checkIn.deleteMany();
-  await prisma.task.deleteMany();
+  await prisma.goal.deleteMany();
+  await prisma.moodCheckIn.deleteMany();
+  await prisma.userTraits.deleteMany();
   await prisma.companionState.deleteMany();
   await prisma.rewardItem.deleteMany();
   await prisma.user.deleteMany();
 
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  // lastStreakAt set to yesterday (UTC) so the first demo check-in earns
+  // exactly one +5 streak bonus per contract.ts STREAK_BONUS.
   const user = await prisma.user.create({
-    data: { name: "Demo User", streak: 3 },
+    data: { name: "Demo User", streak: 3, lastStreakAt: yesterday },
   });
 
+  await prisma.userTraits.create({
+    data: {
+      userId: user.id,
+      age: 27,
+      gender: "prefer not to say",
+      communicationStyle: "encouraging",
+      motivationStyle: "support",
+    },
+  });
+
+  await prisma.moodCheckIn.create({
+    data: { userId: user.id, mood: "okay" },
+  });
+
+  // Seed xp at 80, not 40 — Tiny hat (cost 20) then reaches xp 100 / level
+  // 3 with XP_PER_LEVEL = 50, producing the demo's promised level-up.
   await prisma.companionState.create({
-    data: { userId: user.id, level: 2, xp: 40, mood: "content" },
+    data: { userId: user.id, level: 2, xp: 80, mood: "content" },
   });
 
-  await prisma.task.createMany({
+  const in30Days = new Date();
+  in30Days.setDate(in30Days.getDate() + 30);
+  const in60Days = new Date();
+  in60Days.setDate(in60Days.getDate() + 60);
+
+  await prisma.goal.createMany({
     data: [
-      { userId: user.id, title: "Clean the kitchen", difficulty: 2 },
-      { userId: user.id, title: "Reply to that email", difficulty: 1 },
-      { userId: user.id, title: "Go for a 10-minute walk", difficulty: 1 },
-      { userId: user.id, title: "Do the laundry", difficulty: 2 },
-      { userId: user.id, title: "Finish the report draft", difficulty: 3 },
+      {
+        userId: user.id,
+        title: "Clean the kitchen",
+        category: "chore",
+        difficulty: 2,
+        checkInFrequency: "daily",
+        penaltyPoints: 20,
+        endDate: in30Days,
+        lastCheckInAt: yesterday,
+      },
+      {
+        userId: user.id,
+        title: "Lose 10 pounds",
+        category: "health",
+        difficulty: 3,
+        checkInFrequency: "daily",
+        penaltyPoints: 20,
+        endDate: in60Days,
+      },
+      {
+        userId: user.id,
+        title: "Ship the side project MVP",
+        category: "project",
+        difficulty: 3,
+        checkInFrequency: "weekly",
+        penaltyPoints: 50,
+        endDate: in60Days,
+      },
     ],
   });
 

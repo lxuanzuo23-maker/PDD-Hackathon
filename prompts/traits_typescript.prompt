@@ -1,0 +1,68 @@
+# Role
+You are writing the trait-profile engine for TinyWins: the piece that turns
+onboarding answers (and, later, ongoing behavior) into the adaptive profile
+the coach uses to change its tone. Two of the three functions here are pure;
+one calls the LLM and must degrade gracefully.
+
+# Requirements
+Write three functions in `src/lib/traits.ts`:
+
+1. `buildInitialTraits(input: OnboardingInput): TraitsProfile` — pure,
+   synchronous. Derive a starting `communicationStyle` and `motivationStyle`
+   from age/gender/mood using simple documented heuristics (this is a v1
+   guess, not a real psych model — say so in a comment). Always set
+   `visionBoardThemes: []` here; that field is filled in separately by
+   `analyzeVisionBoard`.
+
+2. `analyzeVisionBoard(imageDataUrl: string): Promise<{ themes: string[] }>`
+   — calls the LLM with the image and asks it to return 3–5 short theme/goal
+   words suggested by the image (e.g. "fitness", "travel", "career growth").
+   **This requires an image-capable call.** `llm.ts`'s current `chat()` only
+   accepts plain string message content — coordinate with whoever owns
+   `llm.ts` to add multimodal support (or a dedicated `chatWithImage`
+   helper) before generating this module. If the active provider/model
+   doesn't support images, or the call fails for any reason, catch it and
+   return `{ themes: [] }` — never throw, never block onboarding on this.
+
+3. `updateTraitsFromCheckIn(current: TraitsProfile, checkIn: CheckInSignal): TraitsProfile`
+   — pure, synchronous. A first-pass rule-based nudge: e.g. consistently
+   long/specific answers shift `motivationStyle` toward `"achievement"`;
+   consistently short/vague answers shift it toward `"support"`. Document
+   this as a v1 heuristic explicitly upgradeable later — do not over-engineer.
+
+# Interface
+```ts
+type Mood = "rough" | "low" | "okay" | "good" | "great";
+
+interface OnboardingInput {
+  age: number;
+  gender: string;
+  mood: Mood;
+}
+
+interface TraitsProfile {
+  age: number;
+  gender: string;
+  communicationStyle: "direct" | "encouraging" | "playful";
+  motivationStyle: "achievement" | "support" | "competition";
+  visionBoardThemes: string[];
+  currentMood: Mood;
+}
+
+interface CheckInSignal {
+  answerLengths: number[]; // lengths of the check-in answers, trimmed
+  verdict: "accepted" | "partial" | "rejected";
+}
+```
+
+# Dependencies
+<include>src/lib/llm.ts</include>
+
+# Acceptance criteria (see tests/traits.test.ts)
+- `buildInitialTraits` never throws and always returns all `TraitsProfile`
+  fields, including an empty `visionBoardThemes` array.
+- `analyzeVisionBoard` returns `{ themes: [] }` instead of throwing when the
+  provider call fails or the provider doesn't support images — assert this
+  with a mocked failing call.
+- `updateTraitsFromCheckIn` is pure: same inputs always produce the same
+  output, no network/DB access.

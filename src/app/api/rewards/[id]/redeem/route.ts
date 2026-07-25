@@ -52,6 +52,6 @@ export async function POST(
   return NextResponse.json({
     ok: true,
     newBalance: balance - item.cost,
-    companionState: updatedCompanion,
+    companion: updatedCompanion,
   });
 }

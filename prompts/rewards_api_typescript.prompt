@@ -1,0 +1,50 @@
+# Role
+You are fixing and documenting the Rewards API for TinyWins. The logic was
+already close to correct — the only real bug was a field-name drift
+against the frozen contract.
+
+# Requirements
+
+## `src/app/api/rewards/route.ts`
+
+**`GET`** — returns `RewardsResponse`: `{ items, companion, pointsBalance }`.
+Fetch all `RewardItem` rows, the user's `CompanionState` (upsert a default
+one if missing — a fresh demo user shouldn't 500 here), and the points
+balance from summing `PointsLedger`. **The companion field must be named
+`companion`, not `companionState`** — this was the bug: the route
+previously returned `companionState`, which doesn't match `contract.ts`
+and silently broke any UI reading `data.companion`.
+
+## `src/app/api/rewards/[id]/redeem/route.ts`
+
+**`POST`** — unchanged core logic (this part was already correct):
+1. Look up the reward item; 404 if missing.
+2. Sum the ledger for current balance; if `balance < item.cost`, 400
+   `{ ok: false, error: "not enough points" }`.
+3. Upsert companion state, add `item.cost` to `xp`, recompute
+   `level = 1 + floor(xp / XP_PER_LEVEL)` with `XP_PER_LEVEL = 50`.
+4. In one transaction: negative `PointsLedger` row (`reason:
+   "redemption"`), `Redemption` row, updated `CompanionState`.
+5. Return `RedeemResponse`: `{ ok: true, newBalance, companion }` — same
+   fix here, the field must be `companion`, not `companionState`.
+
+# Interface
+Reference `RewardsResponse` and `RedeemResponse` from
+`src/lib/contract.ts` — both already define the field as `companion`;
+this prompt exists to make sure the implementation actually matches what
+was already frozen there.
+
+# Dependencies
+<include>src/lib/contract.ts</include>
+<include>src/lib/prisma.ts</include>
+
+# Acceptance criteria
+- `GET /api/rewards` response has a top-level `companion` key (not
+  `companionState`) with `{ level, xp, mood }`.
+- `POST /api/rewards/:id/redeem` response has a top-level `companion` key
+  (not `companionState`).
+- Redeeming "Tiny hat" (cost 20) against the seeded companion (xp 80,
+  level 2) results in xp 100, level 3 — confirms the seed fix (xp 80, not
+  40) actually produces the demo's promised level-up.
+- Insufficient balance returns 400 with `ok: false` and does not write any
+  ledger/redemption/companion rows.

@@ -1,28 +1,42 @@
 # Role
-You are writing the points engine for TinyWins: a pure function with no I/O,
+You are writing the points engine for TinyWins: a pure module with no I/O,
 no Prisma, no LLM calls — just numbers in, numbers out. This is what makes
 it trivially unit-testable and auditable for the anti-gaming story we tell
-judges.
+judges. It must use the frozen constants from `src/lib/contract.ts`, not
+its own copies of them (this file previously drifted from contract.ts —
+don't reintroduce that).
 
 # Requirements
-Write `calculatePoints(input: PointsInput): PointsResult` in `src/lib/points.ts`.
+Write two functions in `src/lib/points.ts`:
 
-Formula:
-- Base points by difficulty: 1 -> 10, 2 -> 20, 3 -> 35.
-- Multiply base by the verifier's effort multiplier (0.5x - 2.0x), reject
-  (throw) if multiplier is outside that range.
-- Add a streak bonus of 2 points per streak-day, capped at 20 points total.
-- Enforce a daily cap of 150 points per user: if the raw total would push
-  today's earnings over the cap, award only the remaining budget and report
-  that it was capped. This cap is the anti-gaming mechanism — mention it to
-  judges as the reason someone can't just spam-complete trivial tasks.
+**`calculatePoints(input: PointsInput): PointsResult`**
+- Base points come from `BASE_POINTS[difficulty]` in `contract.ts`
+  (`{1: 10, 2: 20, 3: 40}`).
+- Multiply base by the verifier's effort multiplier (0.5x–2.0x); throw if
+  the multiplier is outside `VERIFIER_MULTIPLIER` from `contract.ts`.
+- Streak bonus is a **flat `STREAK_BONUS` (5)**, added only when
+  `isFirstToday` is true — not a per-day-scaling bonus. Whether it's the
+  first qualifying check-in of the UTC day is decided by the caller (the
+  checkin route), based on `Goal.lastCheckInAt` / `User.lastStreakAt`; this
+  function just takes the boolean.
+- Enforce `DAILY_POINT_CAP` (150) per user: if the raw total would push
+  today's earnings over the cap, award only the remaining budget and
+  report that it was capped.
+
+**`calculateMissedDayPenalty(input: MissedDayPenaltyInput): MissedDayPenaltyResult`**
+- Flat `penaltyPerPeriod * missedPeriods`, where `penaltyPerPeriod` comes
+  from the specific `Goal.penaltyPoints` (configurable per goal, not a
+  single global constant — different goals carry different stakes).
+- Do **not** interact with the daily earnings cap — penalties are
+  deductions, not earnings, and should not be softened by `DAILY_POINT_CAP`.
+- Returns `{ pointsLost: 0 }` when `missedPeriods <= 0`, never negative.
 
 # Interface
 ```ts
 interface PointsInput {
   difficulty: 1 | 2 | 3;
   multiplier: number;
-  streak: number;
+  isFirstToday: boolean;
   pointsEarnedToday: number;
 }
 
@@ -31,13 +45,29 @@ interface PointsResult {
   streakBonus: number;
   cappedByDailyLimit: boolean;
 }
+
+interface MissedDayPenaltyInput {
+  penaltyPerPeriod: number;
+  missedPeriods: number;
+}
+
+interface MissedDayPenaltyResult {
+  pointsLost: number;
+}
 ```
 
 # Dependencies
-None — this module must stay pure (no imports from llm.ts or prisma.ts).
+<include>src/lib/contract.ts</include>
+(constants only — no Prisma, no LLM imports; this module stays pure.)
 
 # Acceptance criteria (see tests/points.test.ts)
-- 1.0x multiplier, no streak, difficulty 2 -> exactly base points (20).
-- Streak bonus never exceeds 20 regardless of streak length.
+- 1.0x multiplier, `isFirstToday: false`, difficulty 2 -> exactly base
+  points (20), `streakBonus` 0.
+- `isFirstToday: true` adds exactly 5, regardless of difficulty or
+  multiplier.
 - Daily cap is enforced and `cappedByDailyLimit` is true when it triggers.
 - Throws on a multiplier outside [0.5, 2.0].
+- `calculateMissedDayPenalty` with `missedPeriods: 3, penaltyPerPeriod: 20`
+  returns `pointsLost: 60`; with `missedPeriods: 0` returns `pointsLost: 0`.
+- `calculateMissedDayPenalty` never reduces `pointsLost` because of
+  `DAILY_POINT_CAP` — it has no daily-cap awareness at all.
