@@ -43,9 +43,9 @@ When code needs to change, edit the prompt and regenerate — don't hand-patch
 generated files without updating the prompt (the rubric deducts for this).
 
 ## What we built today
-See the demo arc and scope guardrail in the design doc. P0: task list, coach
-chat with 2-minute start + timer, verified completion with effort
-multiplier, points + streak, rewards shelf + companion level-up.
+See the concrete P0 feature spec in [`DESIGN.md`](DESIGN.md). Build only that
+demo arc: Today → Coach 2-minute start → micro-interview → win result →
+Rewards companion redeem. Anything not listed under P0 Features is cut.
 
 ## Known limitations
 See `DISCLOSURES.md`.
