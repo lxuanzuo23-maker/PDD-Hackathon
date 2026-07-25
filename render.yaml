@@ -13,9 +13,15 @@ services:
     envVars:
       - key: DATABASE_URL
         value: file:./dev.db
+      - key: LLM_PROVIDER
+        sync: false
       - key: MINIMAX_API_KEY
         sync: false
       - key: MINIMAX_GROUP_ID
         sync: false
       - key: MINIMAX_MODEL
+        sync: false
+      - key: TOKENROUTER_API_KEY
+        sync: false
+      - key: TOKENROUTER_MODEL
         sync: false

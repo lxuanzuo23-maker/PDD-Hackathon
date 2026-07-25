@@ -13,7 +13,7 @@
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
-export type LLMProvider = "minimax" | "openai" | "anthropic";
+export type LLMProvider = "minimax" | "tokenrouter" | "openai" | "anthropic";
 
 interface ChatOptions {
   temperature?: number;
@@ -36,6 +36,8 @@ export async function chat(
   switch (provider) {
     case "minimax":
       return chatMiniMax(messages, temperature, maxTokens);
+    case "tokenrouter":
+      return chatTokenRouter(messages, temperature, maxTokens);
     case "openai":
       return chatOpenAI(messages, temperature, maxTokens);
     case "anthropic":
@@ -120,6 +122,40 @@ async function chatMiniMax(
   const data = await res.json();
   const content = data?.choices?.[0]?.message?.content;
   if (!content) throw new Error("MiniMax returned no content");
+  return content;
+}
+
+async function chatTokenRouter(
+  messages: ChatMessage[],
+  temperature: number,
+  maxTokens: number
+): Promise<string> {
+  const apiKey = process.env.TOKENROUTER_API_KEY;
+  if (!apiKey) throw new Error("TOKENROUTER_API_KEY not set");
+
+  // OpenAI-compatible gateway; `auto:<mode>` lets TokenRouter pick the
+  // upstream model per request (balance | cost | quality | latency).
+  const res = await fetch("https://api.tokenrouter.io/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: process.env.TOKENROUTER_MODEL || "auto:balance",
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`TokenRouter error ${res.status}: ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("TokenRouter returned no content");
   return content;
 }
 

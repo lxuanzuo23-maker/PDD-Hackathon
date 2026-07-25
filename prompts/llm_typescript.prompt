@@ -9,17 +9,22 @@ Write two exported functions in `src/lib/llm.ts`:
 
 1. `chat(messages, opts?)` — sends messages to whichever provider is
    selected by the `LLM_PROVIDER` env var (`"minimax"` default, or
-   `"openai"` / `"anthropic"` as fallback), returns the raw text reply.
+   `"tokenrouter"` / `"openai"` / `"anthropic"`), returns the raw text reply.
+   TokenRouter (sponsor track) is the intelligent routing layer: an
+   OpenAI-compatible gateway at `https://api.tokenrouter.io/v1/chat/completions`
+   that picks the upstream model per request. Its `model` field comes from
+   `TOKENROUTER_MODEL`, defaulting to `"auto:balance"` (other modes:
+   `auto:cost`, `auto:quality`, `auto:latency`).
 2. `chatJSON<T>(messages, opts?)` — calls `chat()`, parses the result as
    JSON, and retries exactly once with a stricter "reply with ONLY JSON"
    instruction if the first parse fails. Throws if both attempts fail.
 
 Support `temperature` and `maxTokens` in `opts`, defaulting to 0.4 and 500.
 Read provider credentials from environment variables
-(`MINIMAX_API_KEY`/`MINIMAX_GROUP_ID`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
-and throw a clear error naming the missing variable if credentials for the
-selected provider are absent — this should fail loudly at the call site,
-not silently return a canned reply (per the "no hidden fakes" rule).
+(`MINIMAX_API_KEY`/`MINIMAX_GROUP_ID`, `TOKENROUTER_API_KEY`, `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`) and throw a clear error naming the missing variable if
+credentials for the selected provider are absent — this should fail loudly at
+the call site, not silently return a canned reply (per the "no hidden fakes" rule).
 
 # Dependencies
 None — this is the base module everything else depends on.

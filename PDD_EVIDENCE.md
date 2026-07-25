@@ -11,7 +11,7 @@ update this continuously, not at the end.
 | `prompts/verifier_typescript.prompt` | `src/lib/verifier.ts` | `src/app/api/tasks/[id]/complete/route.ts` | `tests/verifier.test.ts` _(planned, C)_ |
 | `prompts/coach_typescript.prompt` | `src/lib/coach.ts` | `src/app/api/coach/chat/route.ts` | `tests/coach.test.ts` _(planned, C)_ |
 | `prompts/points_typescript.prompt` | `src/lib/points.ts` | `src/app/api/tasks/[id]/complete/route.ts` | `tests/points.test.ts` ✅ passing |
-| `prompts/llm_typescript.prompt` | `src/lib/llm.ts` | `coach.ts`, `verifier.ts` | `tests/llm.test.ts` _(planned, C)_ |
+| `prompts/llm_typescript.prompt` | `src/lib/llm.ts` | `coach.ts`, `verifier.ts` | `tests/llm.test.ts` ✅ passing |
 | `prompts/ui-today_typescript.prompt` | `src/app/today/page.tsx` | Today screen | manual + `pdd test` (story) |
 
 `src/lib/contract.ts` + `tests/contract.test.ts` ✅ (4 tests passing) pin the API/points
@@ -60,3 +60,11 @@ _(fill in during the build)_
 **v1 behavior:** —
 **Prompt revision:** —
 **v2 result:** —
+
+## Module change log (chain kept in sync)
+
+- 2026-07-25 `llm`: added TokenRouter (sponsor track) as a routed provider.
+  Prompt (`prompts/llm_typescript.prompt`), code (`src/lib/llm.ts`), and test
+  (`tests/llm.test.ts`, covers the prompt's 4 acceptance criteria with a
+  stubbed fetch) updated **in the same commit** per convention rule 2.
+  `pdd --local sync llm` re-verification pending an LLM key (see Tooling status).
