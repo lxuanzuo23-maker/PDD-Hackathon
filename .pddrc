@@ -1,0 +1,8 @@
+contexts:
+  default:
+    defaults:
+      generate_output_path: src/lib/
+      test_output_path: tests/
+      example_output_path: examples/
+      strength: 0.8
+      temperature: 0.0

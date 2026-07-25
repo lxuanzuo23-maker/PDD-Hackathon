@@ -9,8 +9,10 @@ dev.db-journal
 next-env.d.ts
 .DS_Store
 *.log
-# pdd local state that should not be committed (keep .pdd/meta run reports IN git as PDD evidence)
+# pdd local state that should not be committed (keep .pdd/meta + .pdd/evidence IN git as PDD evidence)
 .pdd/cache/
 .pdd/locks/
 .pdd/worktrees/
+.pdd/core_dumps/
 .pdd/agentic_sync_state.json
+litellm_cache.sqlite/
