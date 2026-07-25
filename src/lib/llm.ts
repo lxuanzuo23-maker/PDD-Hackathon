@@ -133,19 +133,24 @@ async function chatTokenRouter(
   const apiKey = process.env.TOKENROUTER_API_KEY;
   if (!apiKey) throw new Error("TOKENROUTER_API_KEY not set");
 
-  // TokenRouter's current API is Responses-compatible. `auto:<mode>` lets it
-  // select an upstream model (balance | cost | quality | latency).
-  const res = await fetch("https://api.tokenrouter.io/v1/responses", {
+  // This account uses TokenRouter's OpenAI-compatible .com API. The old
+  // auto:balance value belonged to an unrelated .io service, so ignore it.
+  const configuredModel = process.env.TOKENROUTER_MODEL;
+  const model =
+    configuredModel && configuredModel !== "auto:balance"
+      ? configuredModel
+      : "google/gemini-3.5-flash-lite";
+  const res = await fetch("https://api.tokenrouter.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.TOKENROUTER_MODEL || "auto:balance",
-      input: formatTokenRouterInput(messages),
+      model,
+      messages,
       temperature,
-      max_output_tokens: maxTokens,
+      max_tokens: maxTokens,
     }),
   });
 
@@ -153,16 +158,14 @@ async function chatTokenRouter(
     throw new Error(`TokenRouter error ${res.status}: ${await res.text()}`);
   }
 
-  const data = (await res.json()) as { output_text?: unknown };
-  const content = typeof data.output_text === "string" ? data.output_text : undefined;
-  if (!content) throw new Error("TokenRouter returned no content");
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: unknown } }>;
+  };
+  const content = data?.choices?.[0]?.message?.content;
+  if (typeof content !== "string" || !content) {
+    throw new Error("TokenRouter returned no content");
+  }
   return content;
-}
-
-function formatTokenRouterInput(messages: ChatMessage[]): string {
-  return messages
-    .map((message) => `${message.role.toUpperCase()}:\n${message.content}`)
-    .join("\n\n");
 }
 
 async function chatOpenAI(

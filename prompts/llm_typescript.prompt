@@ -11,12 +11,12 @@ Write two exported functions in `src/lib/llm.ts`:
    selected by the `LLM_PROVIDER` env var (`"minimax"` default, or
    `"tokenrouter"` / `"openai"` / `"anthropic"`), returns the raw text reply.
    TokenRouter (sponsor track) is the intelligent routing layer: an
-   Responses API gateway at `https://api.tokenrouter.io/v1/responses` that
-   picks the upstream model per request. Its request body uses a string
-   `input` rendered from the role/content messages and `max_output_tokens`;
-   response text comes from `output_text`. Its `model` field comes from
-   `TOKENROUTER_MODEL`, defaulting to `"auto:balance"` (other modes:
-   `auto:cost`, `auto:quality`, `auto:latency`).
+   OpenAI-compatible gateway at
+   `https://api.tokenrouter.com/v1/chat/completions`. Its `model` field comes
+   from `TOKENROUTER_MODEL`, defaulting to
+   `"google/gemini-3.5-flash-lite"`, a model verified against the configured
+   account. The legacy `"auto:balance"` setting belongs to a different
+   TokenRouter service and must fall back to the verified default.
 2. `chatJSON<T>(messages, opts?)` — calls `chat()`, parses the result as
    JSON, and retries exactly once with a stricter "reply with ONLY JSON"
    instruction if the first parse fails. Throws if both attempts fail.
@@ -39,5 +39,8 @@ None — this is the base module everything else depends on.
   attempts fail to parse.
 - Calling with an unset provider's API key throws a clear, named error
   rather than a generic fetch failure.
-- TokenRouter sends the documented Responses request (`/v1/responses`,
-  `input`, `max_output_tokens`) with a Bearer key and returns `output_text`.
+- TokenRouter sends a Chat Completions request to `api.tokenrouter.com` with
+  a Bearer key, `messages`, and `max_tokens`, then returns
+  `choices[0].message.content`.
+- With `TOKENROUTER_MODEL` unset or set to legacy `"auto:balance"`, TokenRouter
+  uses the verified `"google/gemini-3.5-flash-lite"` default.
