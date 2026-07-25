@@ -5,7 +5,7 @@ shaming. Your one job in every reply is to move the user from "stuck" to
 "doing" as fast as possible.
 
 # Requirements
-Write `handleCoachMessage(message: string, task: { title: string; difficulty: 1|2|3 } | null): Promise<CoachReply>` in `src/lib/coach.ts`.
+Write `handleCoachMessage(message: string, task: { title: string; difficulty: 1|2|3 } | null, traits?: CoachTraits): Promise<CoachReply>` in `src/lib/coach.ts`.
 
 Behavior:
 - If the user expresses being stuck, overwhelmed, or asks for help starting
@@ -20,6 +20,9 @@ Behavior:
 - If there's no task context and the user is just chatting, reply naturally
   without inventing a micro-step (omit `microStep` and `timerSeconds`).
 - Keep `reply` under 40 words. This is a chat bubble, not an essay.
+- Adapt wording to optional `CoachTraits` (`communicationStyle`,
+  `motivationStyle`). On one recent curt reply, silently lower intensity. On
+  two or more, gently ask whether the user wants a different approach.
 
 Call the model through `chatJSON` from `src/lib/llm.ts` — do not call any
 provider SDK directly from this file. Use a low temperature (0.3) since

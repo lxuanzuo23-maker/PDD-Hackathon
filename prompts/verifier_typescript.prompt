@@ -5,7 +5,12 @@ judge plausibility and effort — not to be a lie detector, but to reward
 honest, specific answers over vague or lazy ones.
 
 # Requirements
-Write `verifyCompletion(task: { title: string; difficulty: 1|2|3 }, answers: [string, string]): Promise<VerifierResult>` in `src/lib/verifier.ts`.
+Write `verifyCompletion(task: { title: string; difficulty: 1|2|3 }, answers: [string, string] | [string, string, string]): Promise<VerifierResult>` in `src/lib/verifier.ts`.
+
+The third answer, when available, is "How did this feel?" Use it as
+supporting honesty/reflection context. Never deduct points merely because the
+feeling was hard, bad, or negative. Keep two-answer support until the frozen
+team contract and API route are migrated together.
 
 Judge on two axes and combine them into one multiplier between 0.5 and 2.0:
 - **Plausibility**: do the answers describe something a person could
