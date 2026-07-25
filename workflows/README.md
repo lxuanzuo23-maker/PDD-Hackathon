@@ -24,6 +24,56 @@ export const dailyRecap = task({ name: "dailyRecap" }, async (userId: string) =>
   // fetch today's check-ins, call the coach LLM, return recap text
 });
 ```
+flowchart TD
+
+    User[User]
+
+    UI[Next.js 14 Frontend<br/>React + Tailwind]
+
+    API[Backend API<br/>Next.js API Routes]
+
+    Prompt[PDD Prompt Layer<br/>prompts/*.md<br/><br/>coach.prompt.md<br/>planner.prompt.md<br/>reward.prompt.md]
+
+    Agent[AI Agent Layer<br/>Motivation Coach<br/>Goal Planner<br/>Task Generator]
+
+    Router[TokenRouter<br/>LLM Routing Layer]
+
+    MiniMax[MiniMax LLM<br/>Reasoning + Generation]
+
+    Memory[mem0 Memory Layer<br/>User History<br/>Preferences<br/>Past Goals]
+
+    DB[(Prisma + SQLite<br/>User<br/>Tasks<br/>Points)]
+
+    Reward[Reward Engine<br/>Points<br/>Achievements]
+
+    Voice[ElevenLabs<br/>Voice Interaction]
+
+    Deploy[Render Cloud Deployment]
+
+
+    User --> UI
+
+    UI --> API
+
+    API --> Agent
+
+    Prompt --> Agent
+
+    Agent --> Router
+
+    Router --> MiniMax
+
+    Agent --> Memory
+
+    Agent --> DB
+
+    DB --> Reward
+
+    Reward --> UI
+
+    Agent --> Voice
+
+    API --> Deploy
 
 3. Trigger from the app or CLI, show the run in the dashboard during the demo.
 
