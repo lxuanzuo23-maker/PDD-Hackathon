@@ -11,7 +11,7 @@ live API failure by substituting fixture data.
   and server-owned lazy-penalty notices.
 
 # Output
-`src/lib/ui-data.ts`
+`src/lib/ui-data.ts` and `tests/ui-data.test.ts`
 
 # Acceptance criteria
 - Fixture mode is visibly detectable with `isFixtureMode`.
