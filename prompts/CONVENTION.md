@@ -18,11 +18,15 @@ Modules and owners (✅ = prompt exists today):
 | `coach` ✅ | `coach_typescript.prompt` | `src/lib/coach.ts` | C |
 | `verifier` ✅ | `verifier_typescript.prompt` | `src/lib/verifier.ts` | C |
 | `ui-today` ✅ | `ui-today_typescript.prompt` | `src/app/today/page.tsx` (via `--output`) | B |
+| `ui-data` ✅ | `ui-data_typescript.prompt` | `src/lib/ui-data.ts` | B |
+| `ui-onboarding` ✅ | `ui-onboarding_typescript.prompt` | `src/app/onboarding/page.tsx` | B |
+| `ui-checkin` ✅ | `ui-checkin_typescript.prompt` | `src/components/CheckInFlow.tsx` | B |
+| `ui-growth` ✅ | `ui-growth_typescript.prompt` | `src/app/growth/page.tsx` | B |
 | `tts` ✅ | `tts_typescript.prompt` | `src/lib/tts.ts` + `/api/tts` route + `tests/tts.test.ts` | C |
 | `tasks_api` | _write before next edit_ | `src/app/api/tasks/**` route handlers | A |
 | `rewards_api` | _write before next edit_ | `src/app/api/rewards/**` route handlers | A |
-| `ui_coach` | _write before next edit_ | `src/app/coach/page.tsx` | B |
-| `ui_rewards` | _write before next edit_ | `src/app/rewards/page.tsx` | B |
+| `ui-coach` ✅ | `ui-coach_typescript.prompt` | `src/app/coach/page.tsx` | B |
+| `ui-rewards` ✅ | `ui-rewards_typescript.prompt` | `src/app/rewards/page.tsx` | B |
 
 ## Every prompt file must contain
 

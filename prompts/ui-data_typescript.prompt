@@ -1,0 +1,19 @@
+# Intent
+Create the client-side data boundary for Person B's pivot UI. It exposes typed
+adapters for live APIs and explicitly enabled demo fixtures; it never hides a
+live API failure by substituting fixture data.
+
+# Requirements
+- Export goal, onboarding, check-in, Coach, Growth, reward, and companion types.
+- Enable fixtures only when `NEXT_PUBLIC_UI_DATA_MODE=fixture`.
+- Keep live errors as thrown errors for page-level labeled error states.
+- Support onboarding multipart submit, multi-goal data, Coach `sessionId`,
+  and server-owned lazy-penalty notices.
+
+# Output
+`src/lib/ui-data.ts` and `tests/ui-data.test.ts`
+
+# Acceptance criteria
+- Fixture mode is visibly detectable with `isFixtureMode`.
+- A failed live request never returns fixture data.
+- Fixtures support multiple active goals and a level-up reward path.

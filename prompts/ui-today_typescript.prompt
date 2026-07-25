@@ -1,25 +1,25 @@
-# Role
-You are building the Today screen for TinyWins — the first thing the user
-sees. Mobile-first, one glance tells them: here's what's left, here's your
-streak, here's your balance.
+# Intent
+Build the mobile-first Today screen for TinyWins' pivot from flat tasks to
+recurring goals. It helps the user choose among all active goals without
+calculating points or missed-day penalties in the browser.
 
 # Requirements
-Build `src/app/today/page.tsx` as a client component that:
-- Fetches `GET /api/tasks` on mount and shows a loading state.
-- Renders the streak (flame icon + count) and points balance in the header.
-- Lists open tasks; each row shows the title, difficulty, and an "I'm stuck"
-  button that navigates to `/coach?taskId=<id>` (this is what kicks off the
-  2-minute-start demo moment — don't build a separate "start" flow, route
-  through the coach).
-- Shows a calm empty state ("nothing on your list — add one small thing")
-  when there are no open tasks, not an error.
+- Fetch `getTodayGoals()` and show streak, balance, goal status, and clearly
+  labeled fixture/error states.
+- Display every active goal due today with Daily cadence and period metadata.
+- Show server-returned lazy penalty notices once per browser session.
+- Let users check in through the shared `CheckInFlow`, get unstuck through
+  `/coach?goalId=…`, and open goal-specific Growth.
+- Offer a minimal Daily-goal modal: title plus end date.
 
-# Dependencies
-<include>src/app/api/tasks/route.ts</include>
+# Interfaces
+Use `GoalsTodayResponse`, `GoalToday`, `PenaltyNotice`, and `CheckInResult`
+from `src/lib/ui-data.ts`.
+
+# Output
+`src/app/today/page.tsx`
 
 # Acceptance criteria
-- Loading, empty, and populated states are all handled without a layout
-  shift or console error.
-- The streak and points values reflect exactly what `/api/tasks` returns —
-  no client-side recalculation.
-- Tapping "I'm stuck" always passes the correct taskId in the URL.
+- A live API failure stays visible; it never falls back to demo data.
+- Check-in success updates the local goal status, balance, and streak.
+- Goal actions always carry the correct `goalId`.

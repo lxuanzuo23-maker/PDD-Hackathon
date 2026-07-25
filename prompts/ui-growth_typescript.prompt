@@ -1,0 +1,22 @@
+# Intent
+Build the mobile Growth dashboard for an individual goal. It combines daily net
+points with an accessible completion/skip history without misleading users by
+aggregating unrelated goals.
+
+# Requirements
+- Add a selector whenever more than one active or ended goal exists.
+- Honor `goalId` in the URL; otherwise default to newest `createdAt`.
+- Render summary, CSS/SVG net-points bars, and chronological history.
+- Clearly label fixture mode and live errors.
+
+# Interfaces
+Use `GoalSummary`, `GrowthResponse`, `getGrowthGoals`, `getGrowth`, and
+`isFixtureMode` from `src/lib/ui-data.ts`.
+
+# Output
+`src/app/growth/page.tsx`
+
+# Acceptance criteria
+- The selected goal changes the chart and history together.
+- Ended goals are read-only and labeled.
+- No cross-goal aggregate is shown.

@@ -1,0 +1,24 @@
+# Intent
+Build TinyWins' goal-aware Coach screen. It moves a user from stuck through a
+user-started micro-step timer into the shared check-in and honest result flow.
+
+# Requirements
+- Read `goalId`, create a browser-session `sessionId`, and auto-send one
+  starter message per goal.
+- Implement `chatting → microStepReady → timing → interview → submitting →
+  result`.
+- Start timers only from the user's button gesture; keep TTS inactive in P0.
+- Render approach feedback only when the server sets `showApproachCheckIn`.
+- Reuse `CheckInFlow` and `CheckInResultCard`.
+
+# Interfaces
+Use `CoachReply`, `sendCoachMessage`, `sendCoachFeedback`, and `CheckInResult`
+from `src/lib/ui-data.ts`.
+
+# Output
+`src/app/coach/page.tsx`
+
+# Acceptance criteria
+- A Coach without `goalId` never exposes completion.
+- Repeated curt-reply behavior is server-owned through `sessionId`.
+- Live failures remain labeled and never manufacture a micro-step.
