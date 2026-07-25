@@ -1,0 +1,11 @@
+node_modules/
+.next/
+out/
+.env
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+# pdd local state that should not be committed (keep .pdd/meta run reports IN git as PDD evidence)
+.pdd/cache/
+.pdd/locks/
+.pdd/worktrees/

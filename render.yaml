@@ -1,0 +1,16 @@
+# Render Blueprint. Person A: Render dashboard -> New -> Blueprint -> pick this repo.
+# After first deploy, set MINIMAX_API_KEY (and MINIMAX_MODEL once verify:minimax names it).
+services:
+  - type: web
+    name: tinywins
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: MINIMAX_API_KEY
+        sync: false
+      - key: MINIMAX_MODEL
+        sync: false
