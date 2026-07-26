@@ -89,6 +89,15 @@ export interface GrowthResponse {
     verdict?: "accepted" | "partial";
     points?: number;
   }[];
+  room?: {
+    events: {
+      id: string;
+      type: string;
+      occurredAt: string;
+      payload: Record<string, unknown>;
+    }[];
+    reflection?: { text?: string; generatedAt?: string; status: "ready" | "unavailable" };
+  };
 }
 
 export interface Reward {
@@ -346,6 +355,18 @@ export async function getGrowth(goalId: string): Promise<GrowthResponse> {
         { date: "Jul 24", status: "done", verdict: "accepted", points: 25 },
         { date: "Jul 25", status: "due" },
       ],
+      room: {
+        reflection: {
+          status: "ready",
+          text: "You keep returning to this goal even when the start feels heavy. Your clearest win is making the first move smaller, not waiting for more motivation.",
+          generatedAt: new Date().toISOString(),
+        },
+        events: [
+          { id: "event-goal", type: "goal.created", occurredAt: "2026-07-20T09:00:00.000Z", payload: { title: goal.title } },
+          { id: "event-coach", type: "coach.highlight", occurredAt: "2026-07-22T09:00:00.000Z", payload: { microStep: "Open the project and write one headline." } },
+          { id: "event-checkin", type: "checkin.completed", occurredAt: "2026-07-24T18:00:00.000Z", payload: { verdict: "accepted", pointsAwarded: 25, mood: "good" } },
+        ],
+      },
     };
   }
   return fetchJson(`/api/growth?goalId=${encodeURIComponent(goalId)}`);

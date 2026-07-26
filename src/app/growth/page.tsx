@@ -78,6 +78,14 @@ function GrowthContent() {
 
       {growth && !loading && (
         <>
+          <section className="rounded-2xl border border-gold bg-gold/20 p-5 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-moss-700">Goal room reflection</p>
+            {growth.room?.reflection?.status === "ready" && growth.room.reflection.text ? (
+              <p className="text-sm text-moss-900">{growth.room.reflection.text}</p>
+            ) : (
+              <p className="text-sm text-moss-700">Reflection unavailable — your progress stats are still here.</p>
+            )}
+          </section>
           <section className="rounded-2xl bg-moss-50 p-5 space-y-3">
             <div>
               <h2 className="font-display text-xl text-moss-900">{growth.goal.title}</h2>
@@ -119,6 +127,20 @@ function GrowthContent() {
               ))}
             </ul>
           </section>
+
+          {growth.room?.events?.length ? (
+            <section className="space-y-2">
+              <h2 className="font-display text-xl text-moss-900">Goal room timeline</h2>
+              <ul className="space-y-2">
+                {growth.room.events.map((event) => (
+                  <li key={event.id} className="rounded-xl bg-moss-50 p-3 text-sm text-moss-700">
+                    <p className="font-medium text-moss-900">{event.type.replace(".", " ")}</p>
+                    <p className="text-xs text-moss-500">{new Date(event.occurredAt).toLocaleString()}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
         </>
       )}
     </div>
