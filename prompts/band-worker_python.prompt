@@ -10,13 +10,17 @@ Python, `band-sdk`. Two agents via `Agent.create(adapter, agent_id,
 api_key)` run concurrently with `asyncio.gather`:
 
 - **Goal Coach** (`BAND_COACH_AGENT_ID`/`BAND_COACH_API_KEY`), adapter
-  mirrors each mention to `/api/internal/band/coach-event` and emits a
-  short "received" thought event.
+  mirrors each mention to `/api/internal/band/coach-event` and replies
+  with a short acknowledgment.
 - **Reflection Guide** (`BAND_REFLECTION_*`), adapter parses message
   content as JSON (falling back to `{"content": <formatted text>}` for
   human free text), posts it to `/api/internal/band/reflections`, and
-  **voices the web's `reply` field** into the room as a thought event —
-  fall back to a short "received" line if the response has no reply.
+  **voices the web's `reply` field** into the room — falling back to a
+  short "received" line if the response has no reply.
+
+All user-facing replies use `tools.send_message` (a normal chat bubble).
+`send_event` types (thought/error) are hidden behind Band's event-type
+filter — never put the reply a human is waiting for inside one.
 
 `post_internal(path, payload)` signs the JSON body with HMAC-SHA256
 (`INTERNAL_WEBHOOK_SECRET`, hex digest in `X-TinyWins-Signature`), POSTs
@@ -33,9 +37,10 @@ env var missing at startup is a hard, named error.
 
 # Acceptance criteria (manual, worker has no test harness)
 - Both agents connect and stay connected with valid credentials.
-- A human free-text @mention to Reflection Guide yields a visible reply
-  event in the room (real reply with the LLM up, labeled offline line
-  with it down) — never silence.
-- A structured check-in mention yields the persisted-reflection reply.
-- Stopping the web service makes mentions produce the labeled
-  "can't reach TinyWins" event; restarting restores replies.
+- A human free-text @mention to Reflection Guide yields a visible chat
+  message in the room (real reply with the LLM up, labeled offline line
+  with it down) — never silence, never a filtered-away thought.
+- A structured check-in mention yields the persisted-reflection reply as
+  a chat message.
+- Stopping the web service makes mentions produce a labeled
+  "can't reach TinyWins" chat message; restarting restores replies.

@@ -60,14 +60,18 @@ class GoalCoachAdapter(SimpleAdapter):
         room_id: str,
     ) -> None:
         content = msg.format_for_llm()
-        post_internal(
-            "/api/internal/band/coach-event",
-            {"roomId": room_id, "content": content},
-        )
-        await tools.send_event(
-            "Goal Coach received a Goal Room event.",
-            "thought",
-            {"roomId": room_id, "kind": "coach_event"},
+        try:
+            post_internal(
+                "/api/internal/band/coach-event",
+                {"roomId": room_id, "content": content},
+            )
+        except Exception as error:
+            await tools.send_message(
+                f"Goal Coach can't reach TinyWins right now ({error})."
+            )
+            return
+        await tools.send_message(
+            "Logged — this moment is on your Goal Room timeline. Keep going."
         )
 
 
@@ -91,26 +95,21 @@ class ReflectionAdapter(SimpleAdapter):
             payload = {"content": msg.format_for_llm()}
 
         # The web decides what the agent says; a web outage becomes a labeled
-        # line in the room, never an adapter crash.
+        # line in the room, never an adapter crash. Replies are chat messages —
+        # send_event types are hidden behind Band's event-type filter.
         try:
             result = post_internal(
                 "/api/internal/band/reflections",
                 {"roomId": room_id, **payload},
             )
         except Exception as error:
-            await tools.send_event(
-                f"Reflection Guide can't reach TinyWins right now ({error}).",
-                "thought",
-                {"roomId": room_id, "kind": "reflection_error"},
+            await tools.send_message(
+                f"Reflection Guide can't reach TinyWins right now ({error})."
             )
             return
 
         reply = (result or {}).get("reply") or "Reflection Guide received the check-in."
-        await tools.send_event(
-            reply,
-            "thought",
-            {"roomId": room_id, "kind": "reflection"},
-        )
+        await tools.send_message(reply)
 
 
 async def main() -> None:
