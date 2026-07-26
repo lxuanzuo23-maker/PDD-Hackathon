@@ -47,3 +47,22 @@ export async function sendBandRoomMessage(input: {
     body: JSON.stringify({ message: { content: input.content, mentions: input.mentions } }),
   });
 }
+
+/**
+ * Asks Reflection Guide to synthesize a reflection for one check-in.
+ * Content must stay pure JSON — the worker json-parses it and relays it
+ * verbatim to /api/internal/band/reflections, which requires these fields.
+ */
+export async function requestGoalReflection(input: {
+  roomId: string;
+  goalId: string;
+  checkInId: string;
+}) {
+  const reflectionAgentId = process.env.BAND_REFLECTION_AGENT_ID;
+  if (!reflectionAgentId) throw new Error("BAND_REFLECTION_AGENT_ID not set");
+  return sendBandRoomMessage({
+    roomId: input.roomId,
+    content: JSON.stringify({ goalId: input.goalId, checkInId: input.checkInId }),
+    mentions: [reflectionAgentId],
+  });
+}

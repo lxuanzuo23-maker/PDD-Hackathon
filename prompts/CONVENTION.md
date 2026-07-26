@@ -23,6 +23,7 @@ Modules and owners (✅ = prompt exists today):
 | `ui-checkin` ✅ | `ui-checkin_typescript.prompt` | `src/components/CheckInFlow.tsx` | B |
 | `ui-growth` ✅ | `ui-growth_typescript.prompt` | `src/app/growth/page.tsx` | B |
 | `tts` ✅ | `tts_typescript.prompt` | `src/lib/tts.ts` + `/api/tts` route + `tests/tts.test.ts` | C |
+| `band` ✅ | `band_typescript.prompt` | `src/lib/band.ts` (web side of `services/band-worker/` loop) | C |
 | `tasks_api` | _write before next edit_ | `src/app/api/tasks/**` route handlers | A |
 | `rewards_api` | _write before next edit_ | `src/app/api/rewards/**` route handlers | A |
 | `ui-coach` ✅ | `ui-coach_typescript.prompt` | `src/app/coach/page.tsx` | B |

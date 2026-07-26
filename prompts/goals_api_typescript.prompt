@@ -79,6 +79,14 @@ not free text).
    write a `MoodCheckIn` row for the recurring mood history, and if
    `isFirstToday` increment `user.streak` and set `lastStreakAt`.
 7. Return the full `CheckInResponse`.
+8. **Fire-and-forget Band Goal Room notify** (never awaited into the
+   response path): ensure the goal has a `bandRoomId` — create the room
+   lazily via `createBandGoalRoom` on first check-in and persist it — then
+   `requestGoalReflection({ roomId, goalId, checkInId })` so Reflection
+   Guide receives pure-JSON content the worker can relay to
+   `/api/internal/band/reflections`. Skip with nothing but a labeled log
+   when the `BAND_*` env vars are unset or Band errors: a check-in must
+   succeed identically with Band fully down.
 
 **Verifier signature (Person C's, already landed):** `verifyCompletion`
 takes the mood as an **optional third element of the answers tuple**, not a
@@ -93,6 +101,7 @@ negative feeling is never by itself a reason to score lower.
 <include>src/lib/points.ts</include>
 <include>src/lib/verifier.ts</include>
 <include>src/lib/prisma.ts</include>
+<include>src/lib/band.ts</include>
 
 # Acceptance criteria
 - `/api/goals/today` after 3 missed daily periods deducts
@@ -107,3 +116,6 @@ negative feeling is never by itself a reason to score lower.
   with no verifier call.
 - `GET /api/goals` never writes to the ledger, under any goal state.
 - A goal whose `endDate` has passed appears under `ended`, not `active`.
+- A check-in with Band env unset (or Band erroring) returns an unchanged
+  200 `CheckInResponse`; with Band configured, the goal gains a persisted
+  `bandRoomId` on its first check-in and a JSON mention lands in the room.

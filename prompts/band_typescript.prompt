@@ -1,0 +1,44 @@
+# Role
+You are the single integration point between TinyWins and the Band Agent
+API (sponsor track) — the web side of the Goal Room loop. The Python
+worker in `services/band-worker/` is the receiving side: it gets @mentions
+from Band and relays them as HMAC-signed callbacks to
+`/api/internal/band/*`. Nothing else in the app may call Band directly.
+
+# Requirements
+Write these exported functions in `src/lib/band.ts`, all sharing one
+`bandRequest` helper that targets `https://app.band.ai/api/v1/agent`,
+authenticates with the `X-API-Key` header (`BAND_COACH_API_KEY` by
+default), throws a clear error naming the env var when the key is absent,
+and surfaces non-OK responses as thrown errors including the HTTP status.
+Responses unwrap Band's `{ data: T }` envelope.
+
+1. `createBandGoalRoom(title)` — creates a Band chat titled
+   `TinyWins · <title>`, adds the Reflection Guide agent
+   (`BAND_REFLECTION_AGENT_ID`) as a participant, returns the room id.
+2. `sendBandRoomMessage({ roomId, content, mentions })` — posts one
+   message into a room.
+3. `requestGoalReflection({ roomId, goalId, checkInId })` — the check-in
+   hook. Content must be **pure JSON** `{"goalId","checkInId"}` (no prose):
+   the worker `json.loads`es message content and relays it verbatim to
+   `/api/internal/band/reflections`, which requires exactly those fields.
+   Mentions: `[BAND_REFLECTION_AGENT_ID]`. Throws a named error if that
+   env var is unset.
+
+Failure semantics: callers treat every throw as non-blocking — a check-in
+must never fail because Band is down (labeled log only, no hidden retry,
+per the "no hidden fakes" rule).
+
+# Dependencies
+None — sibling of `llm.ts`/`tts.ts`; consumed by the goals check-in route.
+
+# Acceptance criteria (see tests/band.test.ts)
+- `createBandGoalRoom` POSTs `/chats` then `/chats/{id}/participants` with
+  the reflection agent id, sending `X-API-Key`, and returns the room id.
+- `sendBandRoomMessage` POSTs `/chats/{roomId}/messages` with content and
+  mentions in Band's `{ message: ... }` envelope.
+- `requestGoalReflection` sends parseable-JSON content containing exactly
+  `goalId` and `checkInId`, mentioning the reflection agent.
+- A missing `BAND_COACH_API_KEY` or `BAND_REFLECTION_AGENT_ID` throws an
+  error naming that variable.
+- A non-OK Band response throws an error containing the HTTP status.

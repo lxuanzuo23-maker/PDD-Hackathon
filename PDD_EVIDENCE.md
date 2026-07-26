@@ -24,6 +24,7 @@ update this continuously, not at the end.
 | `prompts/llm_typescript.prompt` | `src/lib/llm.ts` | `coach.ts`, `verifier.ts`, `traits.ts` | `tests/llm.test.ts` ✅ passing |
 | `prompts/ui-today_typescript.prompt` | `src/app/today/page.tsx` | Today screen | manual + `pdd test` (story) |
 | `prompts/tts_typescript.prompt` | `src/lib/tts.ts` | `src/app/api/tts/route.ts`, coach 2-minute-start card | `tests/tts.test.ts` ✅ passing |
+| `prompts/band_typescript.prompt` | `src/lib/band.ts` | check-in route (fire-and-forget), `services/band-worker/` relays back to `/api/internal/band/*` | `tests/band.test.ts` ✅ passing |
 
 `src/lib/contract.ts` + `tests/contract.test.ts` ✅ (4 tests passing) pin the API/points
 constants the prompts reference.
@@ -74,6 +75,19 @@ _(fill in during the build)_
 **v2 result:** —
 
 ## Module change log (chain kept in sync)
+
+- 2026-07-25 `band` (NEW chain) + `goals_api`: closed the missing outbound half
+  of the Goal Room loop. Live logs proved Band → worker → signed callback
+  worked (`coach-event 200 ×3`) but `reflections` 400'd: nothing in the app
+  ever posted the `{goalId, checkInId}` mention that route requires —
+  `createBandGoalRoom`/`sendBandRoomMessage` had zero call sites and
+  `Goal.bandRoomId` was never populated. Check-ins now fire-and-forget a
+  Band notify: lazily create + persist the goal's room, then
+  `requestGoalReflection` posts pure-JSON content mentioning the agent
+  (worker `json.loads`es it verbatim). Band down or unconfigured = labeled
+  log, identical 200 check-in. Prompts (`band` new, `goals_api` step 8 +
+  acceptance criterion), code, and `tests/band.test.ts` (7 cases) in one
+  commit.
 
 - 2026-07-25 `llm`: added TokenRouter (sponsor track) as a routed provider.
   Prompt (`prompts/llm_typescript.prompt`), code (`src/lib/llm.ts`), and test

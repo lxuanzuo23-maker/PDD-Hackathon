@@ -3,9 +3,35 @@ import { prisma } from "@/lib/prisma";
 import { verifyCompletion } from "@/lib/verifier";
 import { calculatePoints } from "@/lib/points";
 import { isSameUTCDay } from "@/lib/goals";
+import { createBandGoalRoom, requestGoalReflection } from "@/lib/band";
 import type { CheckInRequest, CheckInResponse, CompanionMood, Mood } from "@/lib/contract";
 
 const VALID_MOODS: Mood[] = ["rough", "low", "okay", "good", "great"];
+
+// Band notify is additive: a check-in must never fail or slow down because
+// the Goal Room is unreachable — labeled log only, no hidden retry.
+async function queueGoalReflection(
+  goal: { id: string; title: string; bandRoomId: string | null },
+  checkInId: string
+) {
+  if (!process.env.BAND_COACH_API_KEY || !process.env.BAND_REFLECTION_AGENT_ID) {
+    console.warn("band notify skipped: BAND_* env not configured");
+    return;
+  }
+  try {
+    let roomId = goal.bandRoomId;
+    if (!roomId) {
+      roomId = await createBandGoalRoom(goal.title);
+      await prisma.goal.update({
+        where: { id: goal.id },
+        data: { bandRoomId: roomId },
+      });
+    }
+    await requestGoalReflection({ roomId, goalId: goal.id, checkInId });
+  } catch (err) {
+    console.error("band goal-room notify failed (non-blocking):", err);
+  }
+}
 
 /**
  * Maps the verifier's continuous multiplier to the P0 verdict bands.
@@ -92,7 +118,7 @@ export async function POST(
 
   const verdict = verdictFromMultiplier(multiplier);
 
-  await prisma.$transaction([
+  const txResults = await prisma.$transaction([
     prisma.goal.update({
       where: { id: goal.id },
       data: { lastCheckInAt: now },
@@ -154,6 +180,10 @@ export async function POST(
       mood: companion.mood as CompanionMood,
     },
   };
+
+  // txResults[1] is the CheckIn row (conditional spread widens the tuple type).
+  const checkInRow = txResults[1] as { id: string };
+  void queueGoalReflection(goal, checkInRow.id);
 
   return NextResponse.json(response);
 }
