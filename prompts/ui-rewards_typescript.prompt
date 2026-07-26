@@ -1,23 +1,56 @@
 # Intent
-Build a transparent Rewards shelf that makes the earned-points loop legible.
-It supports a companion's level-up celebration only when a successful redeem
-actually increases the returned level.
+Build a Rewards shelf that makes the earned-points loop legible **and makes
+spending feel like it did something**. A balance ticking down with an
+unchanged avatar was the original failure mode; the page now renders what the
+user owns onto the companion.
 
 # Requirements
-- Fetch `companion`, `items`, and `pointsBalance` from the UI data boundary.
-- Disable unaffordable rewards and state how many points are missing.
-- Render per-item redemption/loading/error states.
-- Display accessory/theme/skip-token labels and companion mood without
-  inventing functional reward effects.
+
+## The avatar (top of page, the payoff)
+- Render the companion (🐣) with worn accessory emoji floating above it, from
+  `look.accessories`.
+- When `look.themeKey` is set, apply that theme's backdrop gradient to the
+  avatar panel. **Write the gradient class strings as literals in a lookup
+  map** — Tailwind's scanner cannot see dynamically constructed class names,
+  so building them at runtime silently ships an unstyled panel.
+- Show level, mood, XP, and the active theme emoji beneath.
+- When nothing is worn and no theme is active, say so plainly ("Nothing on
+  yet — redeem something below and it shows up here") rather than leaving the
+  panel looking broken.
+
+## Redeem interaction
+- On success, update balance, companion, `owned`, and `look` from the
+  response; briefly scale the panel; bounce the just-earned emoji over the
+  companion; and show "Level up!" only when `result.leveledUp` is true. Clear
+  all of it after ~1.6s.
+- Never fake the celebration — it fires only after a successful response, and
+  a live API failure stays labeled rather than falling back to fixture data.
+- Disable each button while its own redeem is in flight, and when the item is
+  unaffordable (label it `Need N more`).
+
+## Collection
+- A wrap of every owned item's emoji with a count badge for repeats. Omit the
+  section entirely when nothing is owned.
+
+## Shelf
+- Every item with emoji, name, description, and a `Worn` / `Backdrop` /
+  `Kept` label derived from its kind, so the user knows what a purchase will
+  do before spending. Mark owned items (`owned`, `owned ×N`).
 
 # Interfaces
-Use `RewardsResponse`, `Reward`, `Companion`, `getRewards`, `redeemReward`,
-and `isFixtureMode` from `src/lib/ui-data.ts`.
+Use `RewardsResponse`, `Reward`, `OwnedReward`, `CompanionLook`,
+`RedeemResult`, `getRewards`, `redeemReward`, and `isFixtureMode` from
+`src/lib/ui-data.ts`. Do not declare a local copy of the rewards shape.
 
 # Output
 `src/app/rewards/page.tsx`
 
 # Acceptance criteria
-- A redeem result updates balance and companion from the response.
-- Level-up UI appears only when the returned level increases.
-- A live API failure is labeled and never replaced with fixture data.
+- Redeeming an accessory makes its emoji appear above the companion with no
+  page reload.
+- Redeeming a theme visibly changes the avatar panel's background.
+- Level-up UI appears only when the API reports `leveledUp`.
+- An empty collection omits the collection section rather than showing an
+  empty row.
+- Unaffordable items are disabled and state the shortfall.
+- A failed redeem shows a labeled error and plays no celebration.

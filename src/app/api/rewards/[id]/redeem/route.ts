@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-const XP_PER_LEVEL = 50;
+import { buildLook, summarizeOwned, type RedeemedItem } from "@/lib/look";
+import { XP_PER_LEVEL } from "@/lib/contract";
+import type { CompanionMood, RedeemResponse } from "@/lib/contract";
 
 export async function POST(
   _req: Request,
@@ -35,6 +36,7 @@ export async function POST(
 
   const newXp = companion.xp + item.cost;
   const newLevel = 1 + Math.floor(newXp / XP_PER_LEVEL);
+  const leveledUp = newLevel > companion.level;
 
   const [, , updatedCompanion] = await prisma.$transaction([
     prisma.pointsLedger.create({
@@ -45,13 +47,42 @@ export async function POST(
     }),
     prisma.companionState.update({
       where: { userId: user.id },
-      data: { xp: newXp, level: newLevel },
+      data: {
+        xp: newXp,
+        level: newLevel,
+        // A level-up is the companion's proudest moment — reflect it in its
+        // mood rather than leaving the face unchanged.
+        ...(leveledUp ? { mood: "proud" } : {}),
+      },
     }),
   ]);
 
-  return NextResponse.json({
+  // Re-read redemptions after the write so the returned look includes the
+  // item just bought — the whole point is that spending changes the avatar.
+  const redemptions = await prisma.redemption.findMany({
+    where: { userId: user.id },
+    include: { rewardItem: true },
+  });
+  const redeemed: RedeemedItem[] = redemptions.map((r) => ({
+    rewardItemId: r.rewardItemId,
+    kind: r.rewardItem.kind,
+    emoji: r.rewardItem.emoji,
+    themeKey: r.rewardItem.themeKey,
+    redeemedAt: r.createdAt,
+  }));
+
+  const response: RedeemResponse = {
     ok: true,
     newBalance: balance - item.cost,
-    companion: updatedCompanion,
-  });
+    companion: {
+      level: updatedCompanion.level,
+      xp: updatedCompanion.xp,
+      mood: updatedCompanion.mood as CompanionMood,
+    },
+    owned: summarizeOwned(redeemed),
+    look: buildLook(redeemed),
+    leveledUp,
+  };
+
+  return NextResponse.json(response);
 }

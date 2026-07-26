@@ -1,0 +1,66 @@
+# Role
+You are writing the pure derivation of the companion's appearance from what
+the user has redeemed. No I/O, no Prisma: same discipline as points.ts.
+
+The companion's look is **never stored as its own state** — it is always
+derived from redemptions, so the avatar cannot drift out of sync with what
+the user actually paid for.
+
+# Requirements
+Write two functions in `src/lib/look.ts`.
+
+**`summarizeOwned(redemptions: RedeemedItem[]): OwnedRewardSummary[]`**
+- Groups redemptions per reward item, counting duplicates.
+- Keeps the **earliest** redemption date per item — that's the "when did I
+  earn this" the collection displays.
+- Sorted by that first-earned date, so the collection reads as a timeline.
+
+**`buildLook(redemptions: RedeemedItem[]): Look`**
+- Accessories are worn **oldest first** and **deduped by emoji**: redeeming
+  the same hat twice must not stack two hats on the sprite.
+- Cap worn accessories at 4 so a heavy spender doesn't bury the companion
+  under emoji. Everything still appears in the collection.
+- The **most recently redeemed** theme wins, so buying a new theme visibly
+  replaces the old backdrop instead of appearing to do nothing.
+- Ignore a theme whose `themeKey` isn't one of `meadow | dusk | sunrise` —
+  render no backdrop rather than a broken one.
+- `skip-token` items are **not** worn: they're inventory, not an outfit.
+- Do not mutate the input array (sort a copy).
+
+# Interface
+```ts
+interface RedeemedItem {
+  rewardItemId: string;
+  kind: string;          // "accessory" | "theme" | "skip-token"
+  emoji: string;
+  themeKey: string | null;
+  redeemedAt: Date;
+}
+
+interface OwnedRewardSummary {
+  rewardItemId: string;
+  count: number;
+  firstRedeemedAt: string; // ISO
+}
+
+interface Look {
+  accessories: string[];
+  themeEmoji?: string;
+  themeKey?: "meadow" | "dusk" | "sunrise";
+}
+```
+
+# Dependencies
+None — this module must stay pure.
+
+# Acceptance criteria (see tests/look.test.ts)
+- No redemptions -> `{ accessories: [] }`.
+- Accessories appear oldest-first regardless of input order.
+- The same accessory redeemed twice appears once.
+- Six accessories yield exactly 4 worn.
+- With two themes redeemed, the later one's `themeKey` and `themeEmoji` win.
+- An unrecognized `themeKey` leaves `themeKey` undefined.
+- A `skip-token` is never worn.
+- The input array's order is unchanged after the call.
+- `summarizeOwned` counts duplicates, keeps the earliest date, and orders by
+  first-earned.

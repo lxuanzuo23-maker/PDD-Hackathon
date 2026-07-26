@@ -163,18 +163,47 @@ export interface RewardItem {
   description: string;
   cost: number;
   kind: RewardKind;
+  /** Emoji rendered as the sticker / worn item. */
+  emoji: string;
+}
+
+/** A reward the user has already redeemed, with how many times. */
+export interface OwnedReward {
+  rewardItemId: string;
+  count: number;
+  firstRedeemedAt: string; // ISO
+}
+
+/**
+ * Everything the companion is currently wearing, derived from redemptions.
+ * Spending points has to visibly change the avatar — otherwise a redeem
+ * reads as "my points went down and nothing happened".
+ */
+export interface CompanionLook {
+  /** Emoji for accessories the companion wears, oldest first. */
+  accessories: string[];
+  /** Emoji of the active theme, if a theme has been redeemed. */
+  themeEmoji?: string;
+  /** Tailwind-safe key for the backdrop, resolved by the UI. */
+  themeKey?: "meadow" | "dusk" | "sunrise";
 }
 
 export interface RewardsResponse {
   items: RewardItem[];
   companion: CompanionState;
   pointsBalance: number;
+  owned: OwnedReward[];
+  look: CompanionLook;
 }
 
 export interface RedeemResponse {
   ok: boolean;
   newBalance: number;
   companion: CompanionState;
+  owned: OwnedReward[];
+  look: CompanionLook;
+  /** True when this redemption crossed a level threshold. */
+  leveledUp: boolean;
 }
 
 // ---------- Onboarding / traits ----------

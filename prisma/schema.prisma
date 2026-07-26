@@ -126,6 +126,11 @@ model RewardItem {
   description String
   cost        Int
   kind        String // "theme" | "accessory" | "skip-token"
+  // Rendered as the sticker in the collection and, for accessories, worn on
+  // the companion — spending points has to visibly change something.
+  emoji       String @default("⭐")
+  // Only set for kind == "theme": which backdrop the theme activates.
+  themeKey    String? // "meadow" | "dusk" | "sunrise"
 
   redemptions Redemption[]
 }

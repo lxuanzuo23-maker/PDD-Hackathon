@@ -1,50 +1,65 @@
 # Role
-You are fixing and documenting the Rewards API for TinyWins. The logic was
-already close to correct — the only real bug was a field-name drift
-against the frozen contract.
+You are writing the Rewards API for TinyWins. Its job is not just to move
+numbers: **spending points has to visibly change the companion**, or a
+redeem reads to the user as "my balance went down and nothing happened."
+That means every response carries what the user owns and how the avatar
+should now look.
 
 # Requirements
 
 ## `src/app/api/rewards/route.ts`
 
-**`GET`** — returns `RewardsResponse`: `{ items, companion, pointsBalance }`.
-Fetch all `RewardItem` rows, the user's `CompanionState` (upsert a default
-one if missing — a fresh demo user shouldn't 500 here), and the points
-balance from summing `PointsLedger`. **The companion field must be named
-`companion`, not `companionState`** — this was the bug: the route
-previously returned `companionState`, which doesn't match `contract.ts`
-and silently broke any UI reading `data.companion`.
+**`GET`** -> `RewardsResponse` `{ items, companion, pointsBalance, owned, look }`.
+
+- `items` — all `RewardItem` rows **ordered by cost ascending**, so the shelf
+  reads as a progression the user can climb. Each includes its `emoji`.
+- `companion` — upsert a default row if missing; a fresh user must not 500.
+  The field is named `companion`, **not** `companionState`.
+- `pointsBalance` — sum of the `PointsLedger`.
+- `owned` — `summarizeOwned()` over the user's redemptions.
+- `look` — `buildLook()` over the same redemptions.
+
+Load the user's redemptions with `include: { rewardItem: true }`, since the
+look derivation needs each item's `kind`, `emoji`, and `themeKey`.
 
 ## `src/app/api/rewards/[id]/redeem/route.ts`
 
-**`POST`** — unchanged core logic (this part was already correct):
-1. Look up the reward item; 404 if missing.
-2. Sum the ledger for current balance; if `balance < item.cost`, 400
-   `{ ok: false, error: "not enough points" }`.
+**`POST`**:
+1. 404 if the reward item doesn't exist.
+2. Sum the ledger; if `balance < item.cost`, return 400
+   `{ ok: false, error: "not enough points" }` and write nothing.
 3. Upsert companion state, add `item.cost` to `xp`, recompute
-   `level = 1 + floor(xp / XP_PER_LEVEL)` with `XP_PER_LEVEL = 50`.
-4. In one transaction: negative `PointsLedger` row (`reason:
-   "redemption"`), `Redemption` row, updated `CompanionState`.
-5. Return `RedeemResponse`: `{ ok: true, newBalance, companion }` — same
-   fix here, the field must be `companion`, not `companionState`.
+   `level = 1 + floor(xp / XP_PER_LEVEL)` using the constant from
+   `contract.ts` (do not re-declare 50 locally).
+4. Set `mood: "proud"` **only** when the level actually increased — a
+   level-up is the companion's proudest moment and the face should reflect it.
+5. In one transaction: negative `PointsLedger` row (`reason: "redemption"`),
+   a `Redemption` row, and the updated `CompanionState`.
+6. **Re-read redemptions after the write**, then return `owned` and `look`
+   derived from them — the item just bought must be included, since showing
+   the new accessory is the entire point of the interaction.
+7. Return `RedeemResponse` `{ ok, newBalance, companion, owned, look, leveledUp }`.
+
+`leveledUp` is computed server-side rather than left to the client diffing
+levels, so the celebration can't disagree with what was actually persisted.
 
 # Interface
-Reference `RewardsResponse` and `RedeemResponse` from
-`src/lib/contract.ts` — both already define the field as `companion`;
-this prompt exists to make sure the implementation actually matches what
-was already frozen there.
+Reference `RewardsResponse`, `RedeemResponse`, `RewardItem`, `OwnedReward`,
+`CompanionLook`, and `XP_PER_LEVEL` from `src/lib/contract.ts`.
 
 # Dependencies
 <include>src/lib/contract.ts</include>
+<include>src/lib/look.ts</include>
 <include>src/lib/prisma.ts</include>
 
 # Acceptance criteria
-- `GET /api/rewards` response has a top-level `companion` key (not
-  `companionState`) with `{ level, xp, mood }`.
-- `POST /api/rewards/:id/redeem` response has a top-level `companion` key
-  (not `companionState`).
-- Redeeming "Tiny hat" (cost 20) against the seeded companion (xp 80,
-  level 2) results in xp 100, level 3 — confirms the seed fix (xp 80, not
-  40) actually produces the demo's promised level-up.
-- Insufficient balance returns 400 with `ok: false` and does not write any
-  ledger/redemption/companion rows.
+- `GET` and `POST` responses both carry a top-level `companion` key (never
+  `companionState`), plus `owned` and `look`.
+- Redeeming an accessory immediately returns it inside `look.accessories`.
+- Redeeming a theme returns its `themeKey`, and redeeming a second theme
+  replaces the first.
+- Insufficient balance returns 400 and writes no ledger/redemption/companion
+  rows.
+- `leveledUp` is true exactly when the persisted level increased, and the
+  companion's mood becomes `"proud"` on that same redemption.
+- Shelf items come back cheapest-first.

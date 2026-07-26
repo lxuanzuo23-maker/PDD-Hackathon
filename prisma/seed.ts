@@ -99,25 +99,75 @@ async function main() {
     ],
   });
 
+  // Priced so a demo user holding 40 points can afford something
+  // immediately and still see items to work toward. Accessories are worn on
+  // the companion, themes change its backdrop, skip-tokens are inventory.
   await prisma.rewardItem.createMany({
     data: [
       {
-        name: "Meadow theme",
-        description: "A soft green backdrop for your companion.",
-        cost: 30,
-        kind: "theme",
+        name: "Gold star",
+        description: "The classic. You showed up.",
+        cost: 5,
+        kind: "accessory",
+        emoji: "⭐",
+      },
+      {
+        name: "Party hat",
+        description: "For no reason at all.",
+        cost: 10,
+        kind: "accessory",
+        emoji: "🎉",
       },
       {
         name: "Tiny hat",
         description: "A small hat. Very dignified.",
         cost: 20,
         kind: "accessory",
+        emoji: "🎩",
+      },
+      {
+        name: "Cozy scarf",
+        description: "Warmth, earned.",
+        cost: 25,
+        kind: "accessory",
+        emoji: "🧣",
+      },
+      {
+        name: "Meadow theme",
+        description: "A soft green backdrop for your companion.",
+        cost: 30,
+        kind: "theme",
+        emoji: "🌿",
+        themeKey: "meadow",
+      },
+      {
+        name: "Cool shades",
+        description: "Unbothered. Moisturized.",
+        cost: 35,
+        kind: "accessory",
+        emoji: "🕶️",
+      },
+      {
+        name: "Sunrise theme",
+        description: "Early light, for early starts.",
+        cost: 40,
+        kind: "theme",
+        emoji: "🌅",
+        themeKey: "sunrise",
       },
       {
         name: "Skip-a-day token",
         description: "Protects your streak through one missed day.",
         cost: 50,
         kind: "skip-token",
+        emoji: "🛡️",
+      },
+      {
+        name: "Little crown",
+        description: "Thirty days of showing up.",
+        cost: 80,
+        kind: "accessory",
+        emoji: "👑",
       },
     ],
   });

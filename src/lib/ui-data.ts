@@ -104,12 +104,36 @@ export interface Reward {
   description: string;
   cost: number;
   kind: RewardKind;
+  emoji: string;
+}
+
+export interface OwnedReward {
+  rewardItemId: string;
+  count: number;
+  firstRedeemedAt: string;
+}
+
+export interface CompanionLook {
+  accessories: string[];
+  themeEmoji?: string;
+  themeKey?: "meadow" | "dusk" | "sunrise";
 }
 
 export interface RewardsResponse {
   items: Reward[];
   companion: Companion;
   pointsBalance: number;
+  owned: OwnedReward[];
+  look: CompanionLook;
+}
+
+export interface RedeemResult {
+  ok: boolean;
+  newBalance: number;
+  companion: Companion;
+  owned: OwnedReward[];
+  look: CompanionLook;
+  leveledUp: boolean;
 }
 
 const today = new Date().toISOString().slice(0, 10);
@@ -143,28 +167,40 @@ let fixtureStreak = 3;
 let fixtureCompanion: Companion = { level: 2, xp: 80, mood: "content" };
 
 const fixtureRewards: Reward[] = [
-  {
-    id: "tiny-hat",
-    name: "Tiny hat",
-    description: "A small hat. Very dignified.",
-    cost: 20,
-    kind: "accessory",
-  },
-  {
-    id: "meadow-theme",
-    name: "Meadow theme",
-    description: "A soft green backdrop for your companion.",
-    cost: 30,
-    kind: "theme",
-  },
-  {
-    id: "skip-token",
-    name: "Skip-a-day token",
-    description: "Display-only in this demo.",
-    cost: 50,
-    kind: "skip-token",
-  },
+  { id: "gold-star", name: "Gold star", description: "The classic. You showed up.", cost: 5, kind: "accessory", emoji: "⭐" },
+  { id: "party-hat", name: "Party hat", description: "For no reason at all.", cost: 10, kind: "accessory", emoji: "🎉" },
+  { id: "tiny-hat", name: "Tiny hat", description: "A small hat. Very dignified.", cost: 20, kind: "accessory", emoji: "🎩" },
+  { id: "cozy-scarf", name: "Cozy scarf", description: "Warmth, earned.", cost: 25, kind: "accessory", emoji: "🧣" },
+  { id: "meadow-theme", name: "Meadow theme", description: "A soft green backdrop for your companion.", cost: 30, kind: "theme", emoji: "🌿" },
+  { id: "cool-shades", name: "Cool shades", description: "Unbothered. Moisturized.", cost: 35, kind: "accessory", emoji: "🕶️" },
+  { id: "sunrise-theme", name: "Sunrise theme", description: "Early light, for early starts.", cost: 40, kind: "theme", emoji: "🌅" },
+  { id: "skip-token", name: "Skip-a-day token", description: "Display-only in this demo.", cost: 50, kind: "skip-token", emoji: "🛡️" },
+  { id: "little-crown", name: "Little crown", description: "Thirty days of showing up.", cost: 80, kind: "accessory", emoji: "👑" },
 ];
+
+const fixtureThemeKeys: Record<string, "meadow" | "sunrise"> = {
+  "meadow-theme": "meadow",
+  "sunrise-theme": "sunrise",
+};
+
+let fixtureOwned: OwnedReward[] = [];
+
+/** Mirrors buildLook() so fixture mode behaves like the real API. */
+function fixtureLook(): CompanionLook {
+  const look: CompanionLook = { accessories: [] };
+  for (const owned of fixtureOwned) {
+    const item = fixtureRewards.find((r) => r.id === owned.rewardItemId);
+    if (!item) continue;
+    if (item.kind === "accessory" && !look.accessories.includes(item.emoji)) {
+      if (look.accessories.length < 4) look.accessories.push(item.emoji);
+    }
+    if (item.kind === "theme" && fixtureThemeKeys[item.id]) {
+      look.themeKey = fixtureThemeKeys[item.id];
+      look.themeEmoji = item.emoji;
+    }
+  }
+  return look;
+}
 
 function onboardingComplete(): boolean {
   return typeof window !== "undefined" &&
@@ -392,14 +428,14 @@ export async function getRewards(): Promise<RewardsResponse> {
       items: fixtureRewards,
       companion: fixtureCompanion,
       pointsBalance: fixtureBalance,
+      owned: fixtureOwned,
+      look: fixtureLook(),
     };
   }
   return fetchJson("/api/rewards");
 }
 
-export async function redeemReward(
-  rewardId: string
-): Promise<{ ok: boolean; newBalance: number; companion: Companion }> {
+export async function redeemReward(rewardId: string): Promise<RedeemResult> {
   if (isFixtureMode) {
     const reward = fixtureRewards.find((item) => item.id === rewardId);
     if (!reward) throw new Error("Reward not found");
@@ -407,13 +443,33 @@ export async function redeemReward(
     fixtureBalance -= reward.cost;
     const previousLevel = fixtureCompanion.level;
     const xp = fixtureCompanion.xp + reward.cost;
+    const level = 1 + Math.floor(xp / 50);
+    const leveledUp = level > previousLevel;
     fixtureCompanion = {
       ...fixtureCompanion,
       xp,
-      level: 1 + Math.floor(xp / 50),
-      mood: previousLevel < 1 + Math.floor(xp / 50) ? "proud" : fixtureCompanion.mood,
+      level,
+      mood: leveledUp ? "proud" : fixtureCompanion.mood,
     };
-    return { ok: true, newBalance: fixtureBalance, companion: fixtureCompanion };
+
+    const existing = fixtureOwned.find((o) => o.rewardItemId === rewardId);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      fixtureOwned = [
+        ...fixtureOwned,
+        { rewardItemId: rewardId, count: 1, firstRedeemedAt: new Date().toISOString() },
+      ];
+    }
+
+    return {
+      ok: true,
+      newBalance: fixtureBalance,
+      companion: fixtureCompanion,
+      owned: fixtureOwned,
+      look: fixtureLook(),
+      leveledUp,
+    };
   }
   return fetchJson(`/api/rewards/${rewardId}/redeem`, { method: "POST" });
 }

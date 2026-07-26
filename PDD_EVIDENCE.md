@@ -16,6 +16,7 @@ update this continuously, not at the end.
 | `prompts/growth_typescript.prompt` | `src/lib/growth.ts` | `src/app/api/growth/route.ts` | `tests/growth.test.ts` ✅ |
 | `prompts/growth_api_typescript.prompt` | `src/app/api/growth/route.ts` | Growth screen | route-level, manual |
 | `prompts/rewards_api_typescript.prompt` | `src/app/api/rewards/**` | Rewards screen | route-level, manual |
+| `prompts/look_typescript.prompt` | `src/lib/look.ts` | both rewards routes | `tests/look.test.ts` ✅ |
 | `prompts/onboarding_api_typescript.prompt` | `src/app/api/onboarding/**` | Onboarding quiz | route-level, manual |
 | `prompts/traits_typescript.prompt` | `src/lib/traits.ts` | onboarding route, coach tone | `tests/traits.test.ts` ✅ |
 | `prompts/profile_api_typescript.prompt` | `src/app/api/profile/route.ts` | You screen | route-level, manual |
@@ -97,6 +98,31 @@ _(fill in during the build)_
   rewritten Today page. The screens use explicit `NEXT_PUBLIC_UI_DATA_MODE`
   fixtures with a visible label only; live route failures remain labeled
   errors while Person A/C deliver the pivot API contracts.
+- 2026-07-25 `look` (NEW chain) + `rewards_api` + `ui-rewards`: found by
+  walking the demo, not by a failing test. Redeeming a reward deducted points
+  and added XP but changed **nothing** about the avatar, so the interaction
+  read as "my balance went down and nothing happened" — the payoff beat of
+  the 90-second script landed flat on a human watching it. The original spec
+  did say display-only shelf items were acceptable for P0, so this is a
+  deliberate scope increase, not a missed requirement.
+  New pure module `src/lib/look.ts` (prompt → code → `tests/look.test.ts`,
+  11 cases) derives the companion's appearance from redemptions rather than
+  storing it as separate state, so the avatar cannot drift from what was
+  actually paid for. Decisions worth noting: duplicate accessories don't
+  stack on the sprite, worn items cap at 4 so a heavy spender doesn't bury
+  the companion, the most recent theme wins so a new backdrop visibly
+  replaces the old, an unrecognized `themeKey` renders no backdrop instead of
+  a broken one, and `skip-token` is inventory rather than an outfit.
+  Both rewards routes now return `owned` + `look`, re-read **after** the
+  redeem write so the item just bought is included. `leveledUp` moved
+  server-side so the celebration can't disagree with what was persisted.
+  Schema: `RewardItem` gained `emoji` and a nullable `themeKey`
+  (migration `reward_emoji_theme`); the seed catalog grew from 3 to 9 items
+  priced 5–80 so a demo user holding 40 points can afford something
+  immediately and still have things to climb toward.
+  UI gotcha captured in the prompt: theme backdrop classes are written as
+  literal strings in a lookup map, because Tailwind's scanner can't see
+  dynamically built class names and would silently ship an unstyled panel.
 - 2026-07-25 `coach`: shape fix found by walking the demo, and a real
   iteration worth recording. `coach.ts` returned a flat
   `{ microStep: string, timerSeconds }` while the UI reads
