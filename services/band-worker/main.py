@@ -24,7 +24,7 @@ def env(name: str) -> str:
     return value
 
 
-def post_internal(path: str, payload: dict) -> None:
+def post_internal(path: str, payload: dict) -> dict:
     body = json.dumps(payload).encode()
     signature = hmac.new(
         env("INTERNAL_WEBHOOK_SECRET").encode(), body, hashlib.sha256
@@ -38,8 +38,11 @@ def post_internal(path: str, payload: dict) -> None:
         },
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=20):
-        pass
+    with urllib.request.urlopen(request, timeout=20) as response:
+        try:
+            return json.loads(response.read().decode() or "{}")
+        except json.JSONDecodeError:
+            return {}
 
 
 class GoalCoachAdapter(SimpleAdapter):
@@ -87,14 +90,26 @@ class ReflectionAdapter(SimpleAdapter):
         except (TypeError, json.JSONDecodeError):
             payload = {"content": msg.format_for_llm()}
 
-        post_internal(
-            "/api/internal/band/reflections",
-            {"roomId": room_id, **payload},
-        )
+        # The web decides what the agent says; a web outage becomes a labeled
+        # line in the room, never an adapter crash.
+        try:
+            result = post_internal(
+                "/api/internal/band/reflections",
+                {"roomId": room_id, **payload},
+            )
+        except Exception as error:
+            await tools.send_event(
+                f"Reflection Guide can't reach TinyWins right now ({error}).",
+                "thought",
+                {"roomId": room_id, "kind": "reflection_error"},
+            )
+            return
+
+        reply = (result or {}).get("reply") or "Reflection Guide received the check-in."
         await tools.send_event(
-            "Reflection Guide requested a persisted goal reflection.",
+            reply,
             "thought",
-            {"roomId": room_id, "kind": "reflection_requested"},
+            {"roomId": room_id, "kind": "reflection"},
         )
 
 

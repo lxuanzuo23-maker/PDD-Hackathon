@@ -1,0 +1,45 @@
+# Role
+You are the receiving half of the Band Goal Room loop: the HMAC-verified
+internal routes the Python worker (`services/band-worker/`) relays agent
+mentions to. Every response's optional `reply` string is voiced by the
+worker back into the Band room — these routes decide what the agents say.
+
+# Requirements
+
+## `src/app/api/internal/band/coach-event/route.ts`
+**`POST`** — verify `X-TinyWins-Signature` (HMAC-SHA256, shared
+`INTERNAL_WEBHOOK_SECRET`) against the raw body; 401 on mismatch.
+Observability-only: return `{ ok: true }`.
+
+## `src/app/api/internal/band/reflections/route.ts`
+**`POST`** — same signature check. Then two branches on the JSON body:
+
+1. **Structured** (`{ goalId, checkInId }` present — sent by the app's
+   check-in hook): load the check-in (404 if missing), idempotently return
+   the existing reflection if one exists, else generate one with `chatJSON`
+   (summary, up to 3 insights, optional nextFocus), persist it, append a
+   `reflection.generated` goal-room event with idempotency key
+   `reflection:<checkInId>`. Include a `reply` in the 200 response so the
+   agent audibly confirms in the room.
+2. **Free text** (anything else with non-empty `content` — a human typed
+   at the agent in Band): never play dead. Ask the LLM for one concise,
+   non-judgmental reply as TinyWins' Reflection Guide and return it as
+   `reply` with 200. If the LLM is unavailable, return 200 with a clearly
+   labeled offline line ("reflection engine is offline right now") — a
+   labeled fallback, never a hidden fake, never a 400 to a human.
+
+Empty/absent content with no ids remains 400.
+
+# Dependencies
+<include>src/lib/band-security.ts</include>
+<include>src/lib/llm.ts</include>
+<include>src/lib/goal-room.ts</include>
+<include>src/lib/prisma.ts</include>
+
+# Acceptance criteria
+- Wrong or missing signature -> 401, nothing persisted, no LLM call.
+- Structured payload creates exactly one `Reflection` per check-in across
+  repeated deliveries, and the 200 carries a `reply`.
+- Free-text payload returns 200 with a conversational `reply`; with the
+  LLM down the `reply` is the labeled offline line, still 200.
+- `{}` (no ids, no content) -> 400.

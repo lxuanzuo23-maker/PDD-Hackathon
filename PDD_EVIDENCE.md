@@ -25,6 +25,8 @@ update this continuously, not at the end.
 | `prompts/ui-today_typescript.prompt` | `src/app/today/page.tsx` | Today screen | manual + `pdd test` (story) |
 | `prompts/tts_typescript.prompt` | `src/lib/tts.ts` | `src/app/api/tts/route.ts`, coach 2-minute-start card | `tests/tts.test.ts` ✅ passing |
 | `prompts/band_typescript.prompt` | `src/lib/band.ts` | check-in route (fire-and-forget), `services/band-worker/` relays back to `/api/internal/band/*` | `tests/band.test.ts` ✅ passing |
+| `prompts/band_callbacks_typescript.prompt` | `src/app/api/internal/band/**` | worker callbacks; `reply` field voiced into the room | route-level, live-verified |
+| `prompts/band-worker_python.prompt` | `services/band-worker/main.py` | hosts both Band agents, voices web replies | manual (see prompt) |
 
 `src/lib/contract.ts` + `tests/contract.test.ts` ✅ (4 tests passing) pin the API/points
 constants the prompts reference.
@@ -76,6 +78,15 @@ _(fill in during the build)_
 
 ## Module change log (chain kept in sync)
 
+- 2026-07-25 `band_callbacks` + `band-worker` (NEW chains): free-text mentions
+  to Reflection Guide no longer play dead. Demo requirement: a human typing at
+  the agent must get a visible answer. The reflections route now answers
+  free text conversationally (labeled offline line if the LLM is down — 200
+  either way; bare `{}` stays 400), all branches return a `reply`, and the
+  worker voices that reply into the room instead of a hardcoded line. A web
+  outage becomes a labeled "can't reach TinyWins" event, not an adapter
+  crash. Both previously promptless files brought under PDD with new prompts
+  in the same commit.
 - 2026-07-25 `band` (NEW chain) + `goals_api`: closed the missing outbound half
   of the Goal Room loop. Live logs proved Band → worker → signed callback
   worked (`coach-event 200 ×3`) but `reflections` 400'd: nothing in the app

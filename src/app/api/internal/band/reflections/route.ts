@@ -10,9 +10,40 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized worker callback" }, { status: 401 });
   }
 
-  const body = JSON.parse(rawBody) as { goalId?: string; checkInId?: string; roomId?: string };
+  const body = JSON.parse(rawBody) as {
+    goalId?: string;
+    checkInId?: string;
+    roomId?: string;
+    content?: string;
+  };
   if (!body.goalId || !body.checkInId) {
-    return NextResponse.json({ error: "goalId and checkInId are required" }, { status: 400 });
+    // A human typed at the agent in the Band room. Answer conversationally —
+    // never a 400 to a person; labeled offline line if the LLM is down.
+    const content = typeof body.content === "string" ? body.content.trim() : "";
+    if (!content) {
+      return NextResponse.json({ error: "goalId and checkInId are required" }, { status: 400 });
+    }
+    try {
+      const chat = await chatJSON<{ reply: string }>(
+        [
+          {
+            role: "system",
+            content:
+              "You are TinyWins' Reflection Guide, reviewing goal check-in patterns. Reply to the message in 1-3 concise, non-judgmental sentences. Return JSON only: {\"reply\": string}.",
+          },
+          { role: "user", content },
+        ],
+        { temperature: 0.4, maxTokens: 200 }
+      );
+      return NextResponse.json({ ok: true, reply: chat.reply });
+    } catch (err) {
+      console.error("reflection free-text reply failed:", err);
+      return NextResponse.json({
+        ok: true,
+        reply:
+          "I'm connected, but my reflection engine is offline right now — I'll pick up your check-ins as soon as it's back.",
+      });
+    }
   }
 
   const checkIn = await prisma.checkIn.findFirst({
@@ -22,7 +53,13 @@ export async function POST(req: NextRequest) {
   if (!checkIn) return NextResponse.json({ error: "check-in not found" }, { status: 404 });
 
   const existing = await prisma.reflection.findUnique({ where: { checkInId: checkIn.id } });
-  if (existing) return NextResponse.json({ ok: true, reflectionId: existing.id });
+  if (existing) {
+    return NextResponse.json({
+      ok: true,
+      reflectionId: existing.id,
+      reply: `Reflection already saved: ${existing.summary}`,
+    });
+  }
 
   const analysis = await chatJSON<{ summary: string; insights: string[]; nextFocus?: string }>(
     [
@@ -62,5 +99,9 @@ export async function POST(req: NextRequest) {
     idempotencyKey: `reflection:${checkIn.id}`,
   });
 
-  return NextResponse.json({ ok: true, reflectionId: reflection.id });
+  return NextResponse.json({
+    ok: true,
+    reflectionId: reflection.id,
+    reply: `Reflection saved for "${checkIn.goal.title}": ${reflection.summary}`,
+  });
 }

@@ -1,0 +1,41 @@
+# Role
+You are the Band-side host of TinyWins' two Goal Room agents
+(`services/band-worker/main.py`). The web service stays the source of
+truth; you only relay @mentions to it as HMAC-signed callbacks and voice
+its replies back into the room. Runs wherever the six env vars exist
+(locally during the build; the `tinywins-band` Render worker in prod).
+
+# Requirements
+Python, `band-sdk`. Two agents via `Agent.create(adapter, agent_id,
+api_key)` run concurrently with `asyncio.gather`:
+
+- **Goal Coach** (`BAND_COACH_AGENT_ID`/`BAND_COACH_API_KEY`), adapter
+  mirrors each mention to `/api/internal/band/coach-event` and emits a
+  short "received" thought event.
+- **Reflection Guide** (`BAND_REFLECTION_*`), adapter parses message
+  content as JSON (falling back to `{"content": <formatted text>}` for
+  human free text), posts it to `/api/internal/band/reflections`, and
+  **voices the web's `reply` field** into the room as a thought event —
+  fall back to a short "received" line if the response has no reply.
+
+`post_internal(path, payload)` signs the JSON body with HMAC-SHA256
+(`INTERNAL_WEBHOOK_SECRET`, hex digest in `X-TinyWins-Signature`), POSTs
+to `TINY_WINS_WEB_URL` + path, and returns the parsed response JSON.
+
+Resilience: a web-service failure must produce a labeled "can't reach
+TinyWins right now" thought event, never an adapter crash — the agents
+must keep answering mentions while the web side is down. Every required
+env var missing at startup is a hard, named error.
+
+# Dependencies
+`services/band-worker/requirements.txt` (band-sdk). Counterpart contract:
+`prompts/band_callbacks_typescript.prompt`.
+
+# Acceptance criteria (manual, worker has no test harness)
+- Both agents connect and stay connected with valid credentials.
+- A human free-text @mention to Reflection Guide yields a visible reply
+  event in the room (real reply with the LLM up, labeled offline line
+  with it down) — never silence.
+- A structured check-in mention yields the persisted-reflection reply.
+- Stopping the web service makes mentions produce the labeled
+  "can't reach TinyWins" event; restarting restores replies.
