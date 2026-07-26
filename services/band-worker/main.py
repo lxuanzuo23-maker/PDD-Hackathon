@@ -25,6 +25,10 @@ def env(name: str) -> str:
     return value
 
 
+def handle(name: str, fallback: str) -> str:
+    return os.getenv(name, fallback).lstrip("@")
+
+
 def post_internal(path: str, payload: dict) -> None:
     body = json.dumps(payload).encode()
     signature = hmac.new(
@@ -82,7 +86,7 @@ class GoalCoachAdapter(SimpleAdapter):
             pass
         await tools.send_message(
             "Start with one visibly imperfect move: open the landing page and write one rough headline. @Reflection Guide, what pattern should I watch for next?",
-            [],
+            [handle("BAND_REFLECTION_HANDLE", "lxuanzuo23/reflection-guide")],
         )
         await tools.send_event(
             "Goal Coach received a Goal Room event.",
@@ -123,7 +127,10 @@ class ReflectionAdapter(SimpleAdapter):
             if not persisted
             else "I saved a reflection from this check-in. Watch for perfectionism after difficult steps, and keep the next action visibly small."
         )
-        await tools.send_message(reply, [])
+        await tools.send_message(
+            reply,
+            [handle("BAND_COACH_HANDLE", "lxuanzuo23/goal-coach")],
+        )
         await tools.send_event(
             "Reflection Guide processed a Goal Room mention.",
             "thought",
