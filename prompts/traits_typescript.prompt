@@ -15,7 +15,8 @@ Write three functions in `src/lib/traits.ts`:
    `analyzeVisionBoard`.
 
 2. `analyzeVisionBoard(imageDataUrl: string): Promise<{ themes: string[] }>`
-   — calls the LLM with the image and asks it to return 3–5 short theme/goal
+   — first calls the RocketRide Cloud Vision Board Insight pipeline, then uses
+   the app LLM only as a fail-soft fallback, asking for 3–5 short theme/goal
    words suggested by the image (e.g. "fitness", "travel", "career growth").
    **This requires an image-capable call.** `llm.ts`'s current `chat()` only
    accepts plain string message content — coordinate with whoever owns

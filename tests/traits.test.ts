@@ -42,6 +42,8 @@ describe("analyzeVisionBoard", () => {
   beforeEach(() => {
     process.env.LLM_PROVIDER = "tokenrouter";
     process.env.TOKENROUTER_API_KEY = "tr_test";
+    delete process.env.ROCKETRIDE_URI;
+    delete process.env.ROCKETRIDE_AUTH;
   });
 
   afterEach(() => {

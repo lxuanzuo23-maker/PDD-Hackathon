@@ -14,6 +14,7 @@
 
 import { chat, imageMessage } from "@/lib/llm";
 import type { Mood, TraitsProfile } from "@/lib/contract";
+import { analyzeVisionBoardWithRocketRide } from "@/lib/rocketride";
 
 export interface OnboardingInput {
   age: number;
@@ -78,6 +79,15 @@ suggests (for example "fitness", "travel", "career growth"). No commentary.`;
 export async function analyzeVisionBoard(
   imageDataUrl: string
 ): Promise<{ themes: string[] }> {
+  try {
+    // RocketRide is the primary multimodal pipeline: Cloud stores a trace for
+    // this analysis and keeps vision/OCR orchestration outside app code.
+    const rocketRide = await analyzeVisionBoardWithRocketRide(imageDataUrl);
+    if (rocketRide.themes.length > 0) return { themes: rocketRide.themes };
+  } catch {
+    // Keep the existing provider path as a labeled-degradation fallback. The
+    // onboarding route reports an empty result as analysis unavailable.
+  }
   try {
     // Not using chatJSON here: it throws after a failed retry, and this
     // function must degrade quietly rather than propagate.

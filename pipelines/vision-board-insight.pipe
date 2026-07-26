@@ -1,0 +1,18 @@
+{
+  "id": "tinywins-vision-board-insight",
+  "title": "TinyWins Vision Board Insight",
+  "description": "Analyze an onboarding vision-board image into concise motivational themes.",
+  "nodes": [
+    {
+      "id": "vision_insight",
+      "provider": "Gemini Vision",
+      "config": {
+        "model": "gemini-1.5-flash",
+        "prompt": "Analyze this vision board. Return ONLY JSON: {\"themes\":[\"3-5 short lowercase goal themes\"],\"communicationStyle\":\"direct|encouraging|playful\",\"motivationStyle\":\"achievement|support|competition\",\"suggestedFirstGoal\":\"one concrete short goal\"}."
+      },
+      "input": {
+        "image": "$.input"
+      }
+    }
+  ]
+}
