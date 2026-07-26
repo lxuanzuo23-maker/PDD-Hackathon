@@ -16,3 +16,5 @@ next-env.d.ts
 .pdd/core_dumps/
 .pdd/agentic_sync_state.json
 litellm_cache.sqlite/
+__pycache__/
+*.pyc
