@@ -9,7 +9,7 @@ update this continuously, not at the end.
 | Prompt | Generated module | Used in | Test |
 |---|---|---|---|
 | `prompts/verifier_typescript.prompt` | `src/lib/verifier.ts` | `src/app/api/goals/[id]/check-in/route.ts` | `tests/verifier.test.ts` _(planned, C)_ |
-| `prompts/coach_typescript.prompt` | `src/lib/coach.ts` | `src/app/api/coach/chat/route.ts` | `tests/coach.test.ts` _(planned, C)_ |
+| `prompts/coach_typescript.prompt` | `src/lib/coach.ts` | `src/app/api/coach/chat/route.ts` | `tests/coach.test.ts` ✅ |
 | `prompts/points_typescript.prompt` | `src/lib/points.ts` | check-in route, `/api/goals/today` (penalty) | `tests/points.test.ts` ✅ passing |
 | `prompts/goals_typescript.prompt` | `src/lib/goals.ts` | all goals routes, `/api/growth` | `tests/goals.test.ts` ✅ |
 | `prompts/goals_api_typescript.prompt` | `src/app/api/goals/**` | Today + check-in flow | route-level, manual |
@@ -97,6 +97,32 @@ _(fill in during the build)_
   rewritten Today page. The screens use explicit `NEXT_PUBLIC_UI_DATA_MODE`
   fixtures with a visible label only; live route failures remain labeled
   errors while Person A/C deliver the pivot API contracts.
+- 2026-07-25 `coach`: shape fix found by walking the demo, and a real
+  iteration worth recording. `coach.ts` returned a flat
+  `{ microStep: string, timerSeconds }` while the UI reads
+  `microStep.description` — so the 2-minute-start card **never rendered** and
+  beat 1 of the 90-second script was silently dead. Nothing errored; the
+  field was simply ignored. Fixed by returning the frozen
+  `CoachChatResponse` shape, and — because the nested form is less natural
+  for a model to emit and it will drift back — by adding a `normalizeReply`
+  step that lifts a flat string into the nested object, defaults
+  `timerSeconds` to 120, and drops whitespace-only descriptions instead of
+  rendering a blank card. Prompt, code, and `tests/coach.test.ts` (10 cases,
+  stubbed `chatJSON`, covering every acceptance criterion including both
+  drift forms) updated in the same commit per convention rule 2.
+  The route now also loads the stored `UserTraits` and passes
+  `communicationStyle` / `motivationStyle` into the coach, so tone adaptation
+  is driven by the user's real onboarding profile rather than a hardcoded
+  persona — this is what makes the "adaptive agent" claim true rather than
+  aspirational. Added `POST /api/coach/feedback` (the UI already called it;
+  it 404'd), which writes the user's chosen approach back to
+  `communicationStyle` — the one place a user can directly overrule the trait
+  heuristics. It returns 409 rather than inventing a profile when the user
+  hasn't onboarded, since age/gender would have to be fabricated.
+  **Known gap:** `recentCurtReplies` is never populated in production — the
+  UI sends a `sessionId` but there's no server-side session store, so the
+  "getting annoyed" ladder only activates if a caller supplies the count.
+  Logged rather than faked.
 - 2026-07-25 `traits` + `profile`: NEW chains, born prompt-first. The team
   converged onto one machine, so the A/B/C split was retired for these.
   `traits.ts` was generated from the pre-existing

@@ -5,44 +5,73 @@ shaming. Your one job in every reply is to move the user from "stuck" to
 "doing" as fast as possible.
 
 # Requirements
-Write `handleCoachMessage(message: string, task: { title: string; difficulty: 1|2|3 } | null, traits?: CoachTraits): Promise<CoachReply>` in `src/lib/coach.ts`.
+Write `handleCoachMessage(message: string, goal: { title: string; difficulty: 1|2|3 } | null, traits?: CoachTraits): Promise<CoachReply>` in `src/lib/coach.ts`.
 
 Behavior:
-- If the user expresses being stuck, overwhelmed, or asks for help starting
-  a task, respond with empathy in one short sentence, then propose exactly
-  one concrete micro-step that takes 2 minutes or less. The micro-step must
-  be small enough to start immediately with zero setup (e.g. "put 5 dishes
-  in the sink" not "clean the kitchen").
-- Always return a `timerSeconds` value (typically 120) whenever you propose
-  a micro-step, so the UI can start a visible countdown.
+- If the user expresses being stuck, overwhelmed, or asks for help starting a
+  goal, respond with empathy in one short sentence, then propose exactly one
+  concrete micro-step that takes 2 minutes or less. It must be small enough
+  to start immediately with zero setup ("put 5 dishes in the sink", not
+  "clean the kitchen").
+- `microStep.timerSeconds` is normally 120, so the UI can run a visible
+  countdown.
 - Never shame, lecture, or use guilt-based language ("you should have...").
   Never diagnose or label the user's mental state.
-- If there's no task context and the user is just chatting, reply naturally
-  without inventing a micro-step (omit `microStep` and `timerSeconds`).
+- If there's no goal context and the user is just chatting, reply naturally
+  and omit `microStep` entirely.
 - Keep `reply` under 40 words. This is a chat bubble, not an essay.
 - Adapt wording to optional `CoachTraits` (`communicationStyle`,
-  `motivationStyle`). On one recent curt reply, silently lower intensity. On
-  two or more, gently ask whether the user wants a different approach.
+  `motivationStyle`), which the route loads from the user's stored
+  onboarding profile. On one recent curt reply, silently lower intensity and
+  do **not** call attention to it. On two or more, gently ask whether the
+  user wants a different approach and set `showApproachCheckIn: true`.
 
-Call the model through `chatJSON` from `src/lib/llm.ts` — do not call any
-provider SDK directly from this file. Use a low temperature (0.3) since
-tone consistency matters more than variety here.
+Call the model through `chatJSON` from `src/lib/llm.ts` — never a provider
+SDK directly. Use a low temperature (0.3): tone consistency matters more
+than variety here.
+
+## Normalizing the reply (do not skip this)
+`microStep` **must** be returned as a nested object. This module originally
+returned a flat `{ microStep: string, timerSeconds: number }`, which silently
+broke the UI — it reads `microStep.description`, so the 2-minute start card
+never rendered and the demo lost its first beat.
+
+Because the nested form is less natural for a model to produce, it will drift
+back to the flat form. So parse defensively rather than trusting the reply:
+- Accept a bare string `microStep` and lift it into
+  `{ description, timerSeconds }`, using a top-level `timerSeconds` if the
+  model put one there, else 120.
+- Accept the nested object, defaulting a missing/invalid `timerSeconds` to 120.
+- Drop `microStep` entirely when the description is missing or whitespace —
+  better no card than a blank one.
+- Only pass through `showApproachCheckIn` when it is literally `true`.
+
+Losing a micro-step to a shape mismatch costs the user the single most
+valuable part of the reply, so normalizing is preferred over strict rejection.
 
 # Output contract
-Return strictly:
+Returns `CoachChatResponse` from `src/lib/contract.ts` (aliased locally as
+`CoachReply`) — do not redeclare the shape:
 ```ts
-interface CoachReply {
+interface CoachChatResponse {
   reply: string;
-  microStep?: string;
-  timerSeconds?: number;
+  microStep?: { description: string; timerSeconds: number };
+  showApproachCheckIn?: boolean;
 }
 ```
 
 # Dependencies
 <include>src/lib/llm.ts</include>
+<include>src/lib/contract.ts</include>
 
 # Acceptance criteria (see tests/coach.test.ts)
-- Given "I'm stuck on cleaning the kitchen" with task difficulty 2, returns
-  a `microStep` and a `timerSeconds` of 120.
-- Given plain chat with no task, does not fabricate a `microStep`.
-- Never includes the substrings "should have" or "why didn't you" in `reply`.
+- A nested `microStep` from the model passes through unchanged.
+- A flat string `microStep` is normalized into the nested shape, preserving a
+  top-level `timerSeconds` when present.
+- A nested `microStep` with no `timerSeconds` defaults to 120.
+- Plain chat with no goal does not fabricate a `microStep`.
+- A whitespace-only description yields no `microStep`.
+- `communicationStyle` and `motivationStyle` appear in the system prompt.
+- One curt reply adds "do not call attention to it" guidance and does **not**
+  ask about changing approach; two or more does ask.
+- The system prompt always contains the anti-shaming instruction.

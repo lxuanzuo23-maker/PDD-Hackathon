@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { handleCoachMessage } from "@/lib/coach";
+import { handleCoachMessage, type CoachTraits } from "@/lib/coach";
 
-// Person A note: the goals pivot removed the Task model, which broke this
-// route's compile. Fixed mechanically here (taskId -> goalId, Task -> Goal)
-// to keep the build/deploy green. The coach *logic* is still Person C's:
-// see the two outstanding items in TEAM_HANDOFF.md — passing TraitsProfile
-// through for tone adaptation, and returning the nested
-// `microStep: { description, timerSeconds }` shape the UI expects instead
-// of today's flat `{ microStep: string, timerSeconds }`.
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const { message, goalId } = body as {
     message?: string;
     goalId?: string;
+    // Accepted for forward compatibility: the UI sends a sessionId so the
+    // coach can eventually track curtness across a conversation. There's no
+    // server-side session store yet, so it's unused here.
     sessionId?: string;
   };
 
@@ -29,8 +25,26 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Real adaptivity: the coach's tone comes from the profile built during
+  // onboarding, not a hardcoded persona. Absent traits are fine — the coach
+  // falls back to its base prompt.
+  const user = await prisma.user.findFirst();
+  let traits: CoachTraits | undefined;
+  if (user) {
+    const stored = await prisma.userTraits.findUnique({
+      where: { userId: user.id },
+      select: { communicationStyle: true, motivationStyle: true },
+    });
+    if (stored) {
+      traits = {
+        communicationStyle: stored.communicationStyle,
+        motivationStyle: stored.motivationStyle,
+      };
+    }
+  }
+
   try {
-    const reply = await handleCoachMessage(message, goal);
+    const reply = await handleCoachMessage(message, goal, traits);
     return NextResponse.json(reply);
   } catch (err) {
     // Labeled fallback, never a hidden canned reply — see risk mitigations
