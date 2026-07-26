@@ -1,238 +1,138 @@
-/**
- * llm.ts — the ONE place TinyWins talks to an LLM.
- *
- * Every other module (coach, verifier) calls `chatJSON()` and never touches
- * a provider SDK directly. Swapping MiniMax for a fallback key is a 1-line
- * change: set LLM_PROVIDER in the environment.
- *
- * Action item from the design doc: verify MiniMax access in the first
- * 30 minutes of the build. If MINIMAX_API_KEY / MINIMAX_GROUP_ID aren't
- * working by T+0:30, switch LLM_PROVIDER to "openai" or "anthropic" and
- * move on — don't debug MiniMax auth mid-build.
- */
-
-type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
-
+/** The single integration point between TinyWins and LLM providers. */
+export type LLMTextPart = { type: "text"; text: string };
+export type LLMImagePart = {
+  type: "image_url";
+  imageUrl: string;
+  detail?: "low" | "high" | "auto";
+};
+export type LLMContentPart = LLMTextPart | LLMImagePart;
+export type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string | LLMContentPart[];
+};
 export type LLMProvider = "minimax" | "tokenrouter" | "openai" | "anthropic";
 
 interface ChatOptions {
   temperature?: number;
   maxTokens?: number;
-  /** Force a provider for this call; otherwise LLM_PROVIDER env var is used. */
   provider?: LLMProvider;
 }
 
-const DEFAULT_PROVIDER = (process.env.LLM_PROVIDER as LLMProvider) || "minimax";
+/** Convenience helper for Vision Board analysis. */
+export function imageMessage(prompt: string, imageUrl: string): ChatMessage {
+  return {
+    role: "user",
+    content: [
+      { type: "text", text: prompt },
+      { type: "image_url", imageUrl, detail: "low" },
+    ],
+  };
+}
 
-/** Raw text completion. Structured callers should use chatJSON below. */
-export async function chat(
-  messages: ChatMessage[],
-  opts: ChatOptions = {}
-): Promise<string> {
-  const provider = opts.provider ?? DEFAULT_PROVIDER;
+export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Promise<string> {
+  const provider = opts.provider ?? (process.env.LLM_PROVIDER as LLMProvider) ?? "minimax";
   const temperature = opts.temperature ?? 0.4;
   const maxTokens = opts.maxTokens ?? 500;
-
   switch (provider) {
-    case "minimax":
-      return chatMiniMax(messages, temperature, maxTokens);
-    case "tokenrouter":
-      return chatTokenRouter(messages, temperature, maxTokens);
-    case "openai":
-      return chatOpenAI(messages, temperature, maxTokens);
-    case "anthropic":
-      return chatAnthropic(messages, temperature, maxTokens);
-    default:
-      throw new Error(`Unknown LLM provider: ${provider}`);
+    case "minimax": return chatMiniMax(messages, temperature, maxTokens);
+    case "tokenrouter": return chatTokenRouter(messages, temperature, maxTokens);
+    case "openai": return chatOpenAI(messages, temperature, maxTokens);
+    case "anthropic": return chatAnthropic(messages, temperature, maxTokens);
+    default: throw new Error(`Unknown LLM provider: ${provider}`);
   }
 }
 
-/**
- * Calls chat(), then parses the response as JSON. Retries once with a
- * stricter "return ONLY JSON" instruction if the first parse fails —
- * this is the retry-once behavior the risk section asks for.
- */
-export async function chatJSON<T>(
-  messages: ChatMessage[],
-  opts: ChatOptions = {}
-): Promise<T> {
-  const raw = await chat(messages, opts);
-  const parsed = tryParseJSON<T>(raw);
+export async function chatJSON<T>(messages: ChatMessage[], opts: ChatOptions = {}): Promise<T> {
+  const parsed = tryParseJSON<T>(await chat(messages, opts));
   if (parsed) return parsed;
-
-  const retryMessages: ChatMessage[] = [
-    ...messages,
-    {
-      role: "user",
-      content:
-        "Your previous reply was not valid JSON. Reply again with ONLY a single valid JSON object, no markdown fences, no commentary.",
-    },
-  ];
-  const retryRaw = await chat(retryMessages, opts);
+  const retryRaw = await chat([...messages, {
+    role: "user",
+    content: "Your previous reply was not valid JSON. Reply again with ONLY a single valid JSON object, no markdown fences, no commentary.",
+  }], opts);
   const retryParsed = tryParseJSON<T>(retryRaw);
   if (retryParsed) return retryParsed;
-
-  throw new Error(
-    `LLM did not return valid JSON after retry. Last response: ${retryRaw.slice(0, 300)}`
-  );
+  throw new Error(`LLM did not return valid JSON after retry. Last response: ${retryRaw.slice(0, 300)}`);
 }
 
 function tryParseJSON<T>(text: string): T | null {
-  const cleaned = text.replace(/```json|```/g, "").trim();
-  try {
-    return JSON.parse(cleaned) as T;
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(text.replace(/```json|```/g, "").trim()) as T; }
+  catch { return null; }
 }
 
-async function chatMiniMax(
-  messages: ChatMessage[],
-  temperature: number,
-  maxTokens: number
+function toOpenAICompatibleMessages(messages: ChatMessage[]) {
+  return messages.map((message) => ({
+    role: message.role,
+    content: typeof message.content === "string" ? message.content : message.content.map((part) =>
+      part.type === "text"
+        ? { type: "text", text: part.text }
+        : { type: "image_url", image_url: { url: part.imageUrl, detail: part.detail ?? "auto" } }
+    ),
+  }));
+}
+
+async function postOpenAICompatible(
+  endpoint: string, apiKey: string, providerName: string, model: string,
+  messages: ChatMessage[], temperature: number, maxTokens: number
 ): Promise<string> {
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model, messages: toOpenAICompatibleMessages(messages), temperature, max_tokens: maxTokens }),
+  });
+  if (!res.ok) throw new Error(`${providerName} error ${res.status}: ${await res.text()}`);
+  const content = (await res.json())?.choices?.[0]?.message?.content;
+  if (typeof content !== "string" || !content) throw new Error(`${providerName} returned no text content`);
+  return content;
+}
+
+async function chatMiniMax(messages: ChatMessage[], temperature: number, maxTokens: number) {
   const apiKey = process.env.MINIMAX_API_KEY;
   const groupId = process.env.MINIMAX_GROUP_ID;
-  const model = process.env.MINIMAX_MODEL || "MiniMax-Text-01";
-  if (!apiKey || !groupId) {
-    throw new Error("MINIMAX_API_KEY / MINIMAX_GROUP_ID not set");
-  }
-
-  const res = await fetch(
-    `https://api.minimax.chat/v1/text/chatcompletion_v2?GroupId=${groupId}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-      }),
-    }
-  );
-
-  if (!res.ok) {
-    throw new Error(`MiniMax error ${res.status}: ${await res.text()}`);
-  }
-
-  const data = await res.json();
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) throw new Error("MiniMax returned no content");
-  return content;
+  if (!apiKey || !groupId) throw new Error("MINIMAX_API_KEY / MINIMAX_GROUP_ID not set");
+  return postOpenAICompatible(`https://api.minimax.chat/v1/text/chatcompletion_v2?GroupId=${groupId}`, apiKey, "MiniMax", process.env.MINIMAX_MODEL || "MiniMax-Text-01", messages, temperature, maxTokens);
 }
 
-async function chatTokenRouter(
-  messages: ChatMessage[],
-  temperature: number,
-  maxTokens: number
-): Promise<string> {
+async function chatTokenRouter(messages: ChatMessage[], temperature: number, maxTokens: number) {
   const apiKey = process.env.TOKENROUTER_API_KEY;
   if (!apiKey) throw new Error("TOKENROUTER_API_KEY not set");
-
-  // This account uses TokenRouter's OpenAI-compatible .com API. The old
-  // auto:balance value belonged to an unrelated .io service, so ignore it.
   const configuredModel = process.env.TOKENROUTER_MODEL;
-  const model =
-    configuredModel && configuredModel !== "auto:balance"
-      ? configuredModel
-      : "google/gemini-3.5-flash-lite";
-  const res = await fetch("https://api.tokenrouter.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`TokenRouter error ${res.status}: ${await res.text()}`);
-  }
-
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: unknown } }>;
-  };
-  const content = data?.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || !content) {
-    throw new Error("TokenRouter returned no content");
-  }
-  return content;
+  const model = configuredModel && configuredModel !== "auto:balance" ? configuredModel : "google/gemini-3.5-flash-lite";
+  return postOpenAICompatible("https://api.tokenrouter.com/v1/chat/completions", apiKey, "TokenRouter", model, messages, temperature, maxTokens);
 }
 
-async function chatOpenAI(
-  messages: ChatMessage[],
-  temperature: number,
-  maxTokens: number
-): Promise<string> {
+async function chatOpenAI(messages: ChatMessage[], temperature: number, maxTokens: number) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY not set");
-
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`OpenAI error ${res.status}: ${await res.text()}`);
-  }
-
-  const data = await res.json();
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) throw new Error("OpenAI returned no content");
-  return content;
+  return postOpenAICompatible("https://api.openai.com/v1/chat/completions", apiKey, "OpenAI", process.env.OPENAI_MODEL || "gpt-4o-mini", messages, temperature, maxTokens);
 }
 
-async function chatAnthropic(
-  messages: ChatMessage[],
-  temperature: number,
-  maxTokens: number
-): Promise<string> {
+function toAnthropicContent(content: ChatMessage["content"]) {
+  if (typeof content === "string") return content;
+  return content.map((part) => {
+    if (part.type === "text") return { type: "text", text: part.text };
+    const match = part.imageUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (!match) throw new Error("Anthropic image input must be a base64 image data URL");
+    return { type: "image", source: { type: "base64", media_type: match[1], data: match[2] } };
+  });
+}
+
+async function chatAnthropic(messages: ChatMessage[], temperature: number, maxTokens: number) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
-
-  const system = messages.find((m) => m.role === "system")?.content;
-  const rest = messages.filter((m) => m.role !== "system");
-
+  const systemMessage = messages.find((message) => message.role === "system");
+  if (systemMessage && typeof systemMessage.content !== "string") throw new Error("Anthropic system messages must be text-only");
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
       model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
-      system,
-      messages: rest,
-      temperature,
-      max_tokens: maxTokens,
+      system: systemMessage?.content,
+      messages: messages.filter((message) => message.role !== "system").map((message) => ({ role: message.role, content: toAnthropicContent(message.content) })),
+      temperature, max_tokens: maxTokens,
     }),
   });
-
-  if (!res.ok) {
-    throw new Error(`Anthropic error ${res.status}: ${await res.text()}`);
-  }
-
-  const data = await res.json();
-  const content = data?.content?.[0]?.text;
+  if (!res.ok) throw new Error(`Anthropic error ${res.status}: ${await res.text()}`);
+  const content = (await res.json())?.content?.[0]?.text;
   if (!content) throw new Error("Anthropic returned no content");
   return content;
 }
