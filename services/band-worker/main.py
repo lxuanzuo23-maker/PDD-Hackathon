@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import os
+from urllib.error import HTTPError
 import urllib.request
 
 from band import Agent
@@ -42,6 +43,19 @@ def post_internal(path: str, payload: dict) -> None:
         pass
 
 
+def structured_payload(msg: PlatformMessage) -> dict | None:
+    """Extract app JSON after Band's rendered @mention prefix."""
+    content = str(getattr(msg, "content", "") or msg.format_for_llm())
+    start = content.find("{")
+    if start < 0:
+        return None
+    try:
+        parsed = json.loads(content[start:])
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 class GoalCoachAdapter(SimpleAdapter):
     """Mirrors Goal Coach room mentions into the durable Goal Room timeline."""
 
@@ -57,9 +71,18 @@ class GoalCoachAdapter(SimpleAdapter):
         room_id: str,
     ) -> None:
         content = msg.format_for_llm()
-        post_internal(
-            "/api/internal/band/coach-event",
-            {"roomId": room_id, "content": content},
+        try:
+            post_internal(
+                "/api/internal/band/coach-event",
+                {"roomId": room_id, "content": content},
+            )
+        except HTTPError:
+            # A manual Band message is still a valid conversation turn even if
+            # it has no TinyWins database context.
+            pass
+        await tools.send_message(
+            "Start with one visibly imperfect move: open the landing page and write one rough headline. @Reflection Guide, what pattern should I watch for next?",
+            [],
         )
         await tools.send_event(
             "Goal Coach received a Goal Room event.",
@@ -82,17 +105,27 @@ class ReflectionAdapter(SimpleAdapter):
         is_session_bootstrap: bool,
         room_id: str,
     ) -> None:
-        try:
-            payload = json.loads(msg.content)
-        except (TypeError, json.JSONDecodeError):
-            payload = {"content": msg.format_for_llm()}
+        payload = structured_payload(msg)
+        persisted = False
+        if payload and payload.get("goalId") and payload.get("checkInId"):
+            try:
+                post_internal(
+                    "/api/internal/band/reflections",
+                    {"roomId": room_id, **payload},
+                )
+                persisted = True
+            except HTTPError:
+                # Stale/deleted IDs must not fail Band message delivery.
+                persisted = False
 
-        post_internal(
-            "/api/internal/band/reflections",
-            {"roomId": room_id, **payload},
+        reply = (
+            "Pattern to watch: difficult tasks can trigger perfectionism after an initially strong start. Keep the next step deliberately small, praise the attempt, and ask for one specific obstacle."
+            if not persisted
+            else "I saved a reflection from this check-in. Watch for perfectionism after difficult steps, and keep the next action visibly small."
         )
+        await tools.send_message(reply, [])
         await tools.send_event(
-            "Reflection Guide requested a persisted goal reflection.",
+            "Reflection Guide processed a Goal Room mention.",
             "thought",
             {"roomId": room_id, "kind": "reflection_requested"},
         )
