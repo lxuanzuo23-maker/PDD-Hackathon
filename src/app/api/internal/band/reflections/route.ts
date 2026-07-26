@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "goalId and checkInId are required" }, { status: 400 });
   }
 
-  const checkIn = await prisma.goalCheckIn.findFirst({
+  const checkIn = await prisma.checkIn.findFirst({
     where: { id: body.checkInId, goalId: body.goalId },
     include: { goal: true },
   });
@@ -37,8 +37,7 @@ export async function POST(req: NextRequest) {
           goal: checkIn.goal.title,
           answers: JSON.parse(checkIn.answers),
           verdict: checkIn.verdict,
-          pointsAwarded: checkIn.pointsAwarded,
-          mood: checkIn.mood,
+          mood: checkIn.feeling,
         }),
       },
     ],

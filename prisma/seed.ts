@@ -9,7 +9,6 @@ async function main() {
   await prisma.pointsLedger.deleteMany();
   await prisma.reflection.deleteMany();
   await prisma.goalRoomEvent.deleteMany();
-  await prisma.goalCheckIn.deleteMany();
   await prisma.coachSession.deleteMany();
   await prisma.goal.deleteMany();
   await prisma.checkIn.deleteMany();
@@ -83,27 +82,6 @@ async function main() {
         checkInFrequency: "weekly",
         penaltyPoints: 50,
         endDate: in60Days,
-      },
-    ],
-  });
-
-  await prisma.goal.createMany({
-    data: [
-      {
-        userId: user.id,
-        title: "Build my startup landing page",
-        startDate: new Date(Date.now() - 10 * 86_400_000),
-        endDate: new Date(Date.now() + 20 * 86_400_000),
-        cadence: "daily",
-      },
-      {
-        userId: user.id,
-        title: "Walk after work",
-        startDate: new Date(Date.now() - 15 * 86_400_000),
-        endDate: new Date(Date.now() - 1 * 86_400_000),
-        cadence: "daily",
-        status: "ended",
-        endedAt: new Date(Date.now() - 1 * 86_400_000),
       },
     ],
   });
