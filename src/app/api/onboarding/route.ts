@@ -1,20 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildInitialTraits, analyzeVisionBoard } from "@/lib/traits";
-import type {
-  OnboardingRequest,
-  OnboardingResponse,
-  OnboardingStatusResponse,
-  TraitsProfile,
-  Mood,
-} from "@/lib/contract";
+import type { Mood, OnboardingResponse } from "@/lib/contract";
 
-// NOTE: this route imports src/lib/traits.ts, which is Person C's module
-// (see prompts/traits_typescript.prompt). It won't compile until that
-// file exists — expected during parallel work, not a bug in this route.
+// NOTE: imports src/lib/traits.ts, which is Person C's module (see
+// prompts/traits_typescript.prompt). Until that file exists this route
+// won't compile — expected during parallel work.
 
 const VALID_MOODS: Mood[] = ["rough", "low", "okay", "good", "great"];
-const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // ~2MB decoded, see prompt
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // matches the UI's 5MB client check
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 async function getDemoUser() {
   const user = await prisma.user.findFirst();
@@ -22,110 +17,103 @@ async function getDemoUser() {
   return user;
 }
 
-function decodedBase64Size(dataUrl: string): number {
-  const base64 = dataUrl.split(",").pop() ?? "";
-  // Each base64 char encodes 6 bits; padding chars don't count toward size.
-  const padding = (base64.match(/=+$/) ?? [""])[0].length;
-  return Math.floor((base64.length * 3) / 4) - padding;
-}
-
-export async function GET() {
-  const user = await getDemoUser();
-  const traits = await prisma.userTraits.findUnique({ where: { userId: user.id } });
-
-  if (!traits) {
-    const response: OnboardingStatusResponse = { completed: false };
-    return NextResponse.json(response);
-  }
-
-  const profile: TraitsProfile = {
-    age: traits.age,
-    gender: traits.gender,
-    communicationStyle: traits.communicationStyle as TraitsProfile["communicationStyle"],
-    motivationStyle: traits.motivationStyle as TraitsProfile["motivationStyle"],
-    visionBoardThemes: traits.visionBoardThemes ? JSON.parse(traits.visionBoardThemes) : [],
-    currentMood: "okay", // most recent mood is tracked via MoodCheckIn, not restated here
-  };
-
-  const response: OnboardingStatusResponse = { completed: true, traits: profile };
-  return NextResponse.json(response);
-}
-
+/**
+ * POST /api/onboarding — multipart FormData (not JSON), because it carries
+ * the vision board image file. Fields: age, gender, habitToImprove,
+ * newHabitGoal, mood, visionBoard?
+ */
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { age, gender, habitToImprove, newHabitGoal, visionBoardImage, mood } =
-    body as Partial<OnboardingRequest>;
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return NextResponse.json(
+      { error: "Expected a multipart form submission." },
+      { status: 400 }
+    );
+  }
 
-  if (typeof age !== "number" || age < 13 || age > 120) {
+  const ageRaw = String(form.get("age") ?? "").trim();
+  const gender = String(form.get("gender") ?? "").trim();
+  const habitToImprove = String(form.get("habitToImprove") ?? "").trim();
+  const newHabitGoal = String(form.get("newHabitGoal") ?? "").trim();
+  const mood = String(form.get("mood") ?? "").trim() as Mood;
+  const visionBoard = form.get("visionBoard");
+
+  const age = Number(ageRaw);
+  if (!Number.isInteger(age) || age < 13 || age > 120) {
     return NextResponse.json(
-      { error: "age must be a number between 13 and 120" },
+      { error: "Enter an age between 13 and 120." },
       { status: 400 }
     );
   }
-  if (!gender || typeof gender !== "string") {
-    return NextResponse.json({ error: "gender is required" }, { status: 400 });
+  if (!gender) {
+    return NextResponse.json({ error: "Choose or describe your gender." }, { status: 400 });
   }
-  if (!mood || !VALID_MOODS.includes(mood)) {
-    return NextResponse.json(
-      { error: `mood must be one of: ${VALID_MOODS.join(", ")}` },
-      { status: 400 }
-    );
+  if (!VALID_MOODS.includes(mood)) {
+    return NextResponse.json({ error: "Choose how today feels." }, { status: 400 });
   }
-  if (visionBoardImage && decodedBase64Size(visionBoardImage) > MAX_IMAGE_BYTES) {
-    return NextResponse.json({ error: "image too large" }, { status: 400 });
+
+  // Validate the image before any LLM work so a bad upload fails fast.
+  let imageDataUrl: string | undefined;
+  if (visionBoard instanceof File && visionBoard.size > 0) {
+    if (!ALLOWED_IMAGE_TYPES.includes(visionBoard.type)) {
+      return NextResponse.json(
+        { error: "Choose a JPEG, PNG, or WebP image." },
+        { status: 400 }
+      );
+    }
+    if (visionBoard.size > MAX_IMAGE_BYTES) {
+      return NextResponse.json(
+        { error: "Vision boards must be 5 MB or smaller." },
+        { status: 400 }
+      );
+    }
+    const buffer = Buffer.from(await visionBoard.arrayBuffer());
+    // Stored inline as a data URL: SQLite is already the disclosed
+    // ephemeral store, and this avoids standing up file hosting for a demo.
+    imageDataUrl = `data:${visionBoard.type};base64,${buffer.toString("base64")}`;
   }
 
   const user = await getDemoUser();
-
   const baseProfile = buildInitialTraits({ age, gender, mood });
 
   let visionBoardThemes: string[] = [];
-  if (visionBoardImage) {
-    // analyzeVisionBoard is documented to never throw — it returns
-    // { themes: [] } on any failure or unsupported provider, so no
-    // try/catch is needed here per its own contract.
-    const analysis = await analyzeVisionBoard(visionBoardImage);
+  let analysisStatus: OnboardingResponse["analysisStatus"] = "complete";
+  if (imageDataUrl) {
+    // analyzeVisionBoard is contracted never to throw — it returns
+    // { themes: [] } when the provider can't do images or the call fails.
+    const analysis = await analyzeVisionBoard(imageDataUrl);
     visionBoardThemes = analysis.themes;
+    // Report honestly rather than claiming success on an empty analysis.
+    if (visionBoardThemes.length === 0) analysisStatus = "unavailable";
   }
 
-  const traits = await prisma.userTraits.upsert({
+  const traitFields = {
+    age,
+    gender,
+    habitToImprove: habitToImprove || null,
+    newHabitGoal: newHabitGoal || null,
+    visionBoardImageUrl: imageDataUrl ?? null,
+    visionBoardThemes: JSON.stringify(visionBoardThemes),
+    communicationStyle: baseProfile.communicationStyle,
+    motivationStyle: baseProfile.motivationStyle,
+  };
+
+  await prisma.userTraits.upsert({
     where: { userId: user.id },
-    update: {
-      age,
-      gender,
-      habitToImprove: habitToImprove?.trim() || null,
-      newHabitGoal: newHabitGoal?.trim() || null,
-      visionBoardImageUrl: visionBoardImage ?? null,
-      visionBoardThemes: JSON.stringify(visionBoardThemes),
-      communicationStyle: baseProfile.communicationStyle,
-      motivationStyle: baseProfile.motivationStyle,
-    },
-    create: {
-      userId: user.id,
-      age,
-      gender,
-      habitToImprove: habitToImprove?.trim() || null,
-      newHabitGoal: newHabitGoal?.trim() || null,
-      visionBoardImageUrl: visionBoardImage ?? null,
-      visionBoardThemes: JSON.stringify(visionBoardThemes),
-      communicationStyle: baseProfile.communicationStyle,
-      motivationStyle: baseProfile.motivationStyle,
-    },
+    update: traitFields,
+    create: { userId: user.id, ...traitFields },
   });
 
   await prisma.moodCheckIn.create({
     data: { userId: user.id, mood },
   });
 
-  const profile: TraitsProfile = {
-    age: traits.age,
-    gender: traits.gender,
-    communicationStyle: traits.communicationStyle as TraitsProfile["communicationStyle"],
-    motivationStyle: traits.motivationStyle as TraitsProfile["motivationStyle"],
-    visionBoardThemes,
-    currentMood: mood,
+  const response: OnboardingResponse = {
+    ...(imageDataUrl ? { imageUrl: imageDataUrl } : {}),
+    analysisStatus,
   };
 
-  const response: OnboardingResponse = { traits: profile };
   return NextResponse.json(response);
 }

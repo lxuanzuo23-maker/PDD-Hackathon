@@ -1,71 +1,70 @@
 # Role
-You are writing the onboarding API route for TinyWins — the persistence
-layer between the onboarding quiz UI and the trait engine.
+You are writing the onboarding API for TinyWins — the persistence layer
+between the onboarding quiz UI and the trait engine.
 
 # Requirements
-Build `src/app/api/onboarding/route.ts` with two handlers:
 
-**`GET`** — looks up the demo user's `UserTraits` row. Returns
-`{ completed: false }` if none exists yet, otherwise
-`{ completed: true, traits: TraitsProfile }`.
+## `src/app/api/onboarding/status/route.ts`
 
-**`POST`** — body is `OnboardingRequest` (age, gender, optional
-habitToImprove, optional newHabitGoal, optional base64 visionBoardImage,
-required mood):
-1. Validate `age` is a number between 13 and 120 — 400 if not.
-2. Validate `mood` is one of the five allowed values — 400 if not.
-3. If `visionBoardImage` is present, reject anything over ~2MB decoded
-   with 400 (`"image too large"`) before touching the LLM — SQLite storage
-   and LLM payload size are both good reasons to cap this early.
-4. Call `buildInitialTraits` from `traits.ts` for the base profile.
-5. If an image was provided and passed size validation, call
-   `analyzeVisionBoard` and merge its `themes` into the profile; if that
-   call fails internally it already returns `{ themes: [] }` per its own
-   contract, so this route does not need its own try/catch around it.
-6. Upsert (not create) the `UserTraits` row for the demo user — resubmitting
-   onboarding updates the existing profile rather than erroring or
-   duplicating.
-7. Create a `MoodCheckIn` row for today with the submitted mood.
-8. Return `{ traits: TraitsProfile }`.
+**`GET`** -> `OnboardingStatusResponse` `{ completed }` — true when a
+`UserTraits` row exists for the demo user. Deliberately returns only the
+boolean (select just the id): the onboarding page uses it to bounce
+returning users to `/today`, and the traits profile itself is internal to
+the coach. 500 with a "run npm run seed" message when there's no demo user,
+matching the existing pattern in `rewards/route.ts`.
+
+## `src/app/api/onboarding/route.ts`
+
+**`POST`** — the body is **multipart FormData, not JSON**, because it
+carries the vision board image file. Read fields: `age`, `gender`,
+`habitToImprove`, `newHabitGoal`, `mood`, `visionBoard` (optional File).
+Reject a non-multipart request with 400 rather than throwing.
+
+Validation, all returning 400 with user-facing copy, all **before** any LLM
+call:
+1. `age` an integer in `[13, 120]` -> "Enter an age between 13 and 120."
+2. `gender` non-empty -> "Choose or describe your gender."
+3. `mood` one of the five `Mood` values -> "Choose how today feels."
+4. If `visionBoard` is present: MIME type in
+   `image/jpeg | image/png | image/webp`, and size <= 5 MB (mirroring the
+   UI's own client-side check so the two can't disagree).
+
+Then:
+5. Encode the image as a base64 data URL and store it inline. SQLite is
+   already the disclosed ephemeral store, so this avoids standing up file
+   hosting for a demo — note the tradeoff in a comment.
+6. `buildInitialTraits({ age, gender, mood })` for the base profile.
+7. If an image was provided, `analyzeVisionBoard(dataUrl)`. It is contracted
+   never to throw (returns `{ themes: [] }` on failure or an
+   image-incapable provider), so this route needs no try/catch around it.
+   **Report honestly**: if the analysis comes back with zero themes, return
+   `analysisStatus: "unavailable"` rather than claiming `"complete"`.
+8. **Upsert** the `UserTraits` row — resubmitting onboarding updates the
+   existing profile instead of erroring or creating a duplicate.
+9. Create a `MoodCheckIn` row for the submitted mood, feeding the recurring
+   mood history.
+10. Return `OnboardingResponse` `{ imageUrl?, analysisStatus }`.
 
 # Interface
-Reference `OnboardingRequest`, `TraitsProfile`, and `OnboardingResponse` —
-these need to be added to `src/lib/contract.ts` (see below) before this
-route can be generated; add them there first and get sign-off from all
-three of you, since that file is the frozen team contract.
-
-```ts
-// contract.ts additions this route depends on
-export type Mood = "rough" | "low" | "okay" | "good" | "great";
-
-export interface OnboardingRequest {
-  age: number;
-  gender: string;
-  habitToImprove?: string;
-  newHabitGoal?: string;
-  visionBoardImage?: string; // base64 data URL
-  mood: Mood;
-}
-
-export interface OnboardingResponse {
-  traits: TraitsProfile;
-}
-
-export interface OnboardingStatusResponse {
-  completed: boolean;
-  traits?: TraitsProfile;
-}
-```
+Reference `OnboardingResponse`, `OnboardingStatusResponse`, `Mood`, and
+`TraitsProfile` from `src/lib/contract.ts`.
 
 # Dependencies
 <include>src/lib/traits.ts</include>
+<include>src/lib/contract.ts</include>
 <include>src/lib/prisma.ts</include>
 
+**Blocked on Person C:** `src/lib/traits.ts` does not exist yet, so this
+route currently fails `tsc`. Nothing to work around in the route — the
+module needs writing per `prompts/traits_typescript.prompt`.
+
 # Acceptance criteria
-- Age outside [13, 120] → 400, no DB write.
-- Missing/invalid `mood` → 400, no DB write.
-- Oversized image → 400 before any LLM call is made.
-- Submitting onboarding twice updates the same `UserTraits` row (upsert),
-  never creates a second one for the demo user.
-- Every successful POST also creates exactly one `MoodCheckIn` row for
-  that day.
+- Age outside `[13, 120]`, empty gender, or an invalid mood -> 400, no DB
+  write, no LLM call.
+- A 6 MB or non-image upload -> 400 before any LLM call.
+- Submitting onboarding twice updates one `UserTraits` row; a second row is
+  never created for the demo user.
+- Every successful POST creates exactly one `MoodCheckIn` row.
+- A vision board that yields no themes returns `analysisStatus:
+  "unavailable"`, and onboarding still succeeds.
+- A JSON (non-multipart) POST returns 400 instead of a 500.

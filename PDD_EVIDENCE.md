@@ -8,10 +8,17 @@ update this continuously, not at the end.
 
 | Prompt | Generated module | Used in | Test |
 |---|---|---|---|
-| `prompts/verifier_typescript.prompt` | `src/lib/verifier.ts` | `src/app/api/tasks/[id]/complete/route.ts` | `tests/verifier.test.ts` _(planned, C)_ |
+| `prompts/verifier_typescript.prompt` | `src/lib/verifier.ts` | `src/app/api/goals/[id]/check-in/route.ts` | `tests/verifier.test.ts` _(planned, C)_ |
 | `prompts/coach_typescript.prompt` | `src/lib/coach.ts` | `src/app/api/coach/chat/route.ts` | `tests/coach.test.ts` _(planned, C)_ |
-| `prompts/points_typescript.prompt` | `src/lib/points.ts` | `src/app/api/tasks/[id]/complete/route.ts` | `tests/points.test.ts` ✅ passing |
-| `prompts/llm_typescript.prompt` | `src/lib/llm.ts` | `coach.ts`, `verifier.ts` | `tests/llm.test.ts` ✅ passing |
+| `prompts/points_typescript.prompt` | `src/lib/points.ts` | check-in route, `/api/goals/today` (penalty) | `tests/points.test.ts` ✅ passing |
+| `prompts/goals_typescript.prompt` | `src/lib/goals.ts` | all goals routes, `/api/growth` | `tests/goals.test.ts` ✅ |
+| `prompts/goals_api_typescript.prompt` | `src/app/api/goals/**` | Today + check-in flow | route-level, manual |
+| `prompts/growth_typescript.prompt` | `src/lib/growth.ts` | `src/app/api/growth/route.ts` | `tests/growth.test.ts` ✅ |
+| `prompts/growth_api_typescript.prompt` | `src/app/api/growth/route.ts` | Growth screen | route-level, manual |
+| `prompts/rewards_api_typescript.prompt` | `src/app/api/rewards/**` | Rewards screen | route-level, manual |
+| `prompts/onboarding_api_typescript.prompt` | `src/app/api/onboarding/**` | Onboarding quiz | route-level, manual |
+| `prompts/traits_typescript.prompt` | `src/lib/traits.ts` _(not written yet, C)_ | onboarding route | `tests/traits.test.ts` _(planned, C)_ |
+| `prompts/llm_typescript.prompt` | `src/lib/llm.ts` | `coach.ts`, `verifier.ts`, `traits.ts` | `tests/llm.test.ts` ✅ passing |
 | `prompts/ui-today_typescript.prompt` | `src/app/today/page.tsx` | Today screen | manual + `pdd test` (story) |
 | `prompts/tts_typescript.prompt` | `src/lib/tts.ts` | `src/app/api/tts/route.ts`, coach 2-minute-start card | `tests/tts.test.ts` ✅ passing |
 
@@ -88,6 +95,34 @@ _(fill in during the build)_
   rewritten Today page. The screens use explicit `NEXT_PUBLIC_UI_DATA_MODE`
   fixtures with a visible label only; live route failures remain labeled
   errors while Person A/C deliver the pivot API contracts.
+- 2026-07-25 Person A contract reconciliation. B's UI shipped first against
+  its own local types in `src/lib/ui-data.ts`; A's API shipped against
+  `contract.ts`. The two disagreed on paths (`/api/goals` vs
+  `/api/goals/today`, `checkin` vs `check-in`, `/api/onboarding` vs
+  `/api/onboarding/status`), on payloads (JSON vs multipart onboarding;
+  2-element vs 3-element check-in answers), and on the growth model
+  (account-wide vs per-goal). Resolved in A's favour on structure and in B's
+  favour on names/shape: `contract.ts` was re-frozen to match `ui-data.ts`
+  1:1, and the routes were rewritten to serve it. New prompt-first chain for
+  `goals` (`prompts/goals_typescript.prompt` → `src/lib/goals.ts` →
+  `tests/goals.test.ts`); `growth`, `goals_api`, `growth_api`, and
+  `onboarding_api` prompts rewritten alongside their code in the same commit
+  per convention rule 2.
+- 2026-07-25 A hand-edit, logged per convention rule 1: `tests/llm.test.ts`
+  (module `llm`, owned by C) called `chat(imageMessage(...))` with a bare
+  message where `chat` takes `ChatMessage[]`, failing both `tsc` and the
+  vision test. A wrapped it in an array — the test's own assertion reads
+  `request.messages[0]`, so a one-element array was the intent. No change to
+  `llm.ts` or its prompt.
+- 2026-07-25 A hand-edit, logged per convention rule 1:
+  `src/app/api/coach/chat/route.ts` (module `coach`, owned by C) referenced
+  `prisma.task`, which A's pivot removed, breaking `tsc` and therefore the
+  deploy. A applied the mechanical rename only (`taskId` → `goalId`,
+  `Task` → `Goal`) and left the coach logic untouched. Two `coach` items
+  remain owed by C: threading `TraitsProfile` through the route for tone
+  adaptation, and returning the nested
+  `microStep: { description, timerSeconds }` shape the UI and contract
+  expect instead of today's flat `{ microStep: string, timerSeconds }`.
 - 2026-07-25 `llm` / `coach` / `verifier`: C pivot update. The LLM wrapper
   now accepts vision content and exposes `imageMessage`; a stubbed-fetch test
   covers TokenRouter image serialization. Coach accepts an optional traits

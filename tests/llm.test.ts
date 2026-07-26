@@ -96,7 +96,7 @@ describe("chat provider selection", () => {
   it("maps a Vision Board image into an OpenAI-compatible image_url part", async () => {
     process.env.TOKENROUTER_API_KEY = "tr_test";
     stubFetchReplies("themes");
-    await chat(imageMessage("Describe themes", "https://example.com/vision.png"), {
+    await chat([imageMessage("Describe themes", "https://example.com/vision.png")], {
       provider: "tokenrouter",
     });
 

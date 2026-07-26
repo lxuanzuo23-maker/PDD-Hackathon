@@ -1,46 +1,55 @@
 # Role
-You are writing the pure date/streak math behind the growth dashboard for
-TinyWins. Same discipline as points.ts: no I/O, no Prisma, plain data in,
-plain numbers out — trivially unit-testable.
+You are writing the pure helpers behind the per-goal growth dashboard in
+TinyWins. No I/O, no Prisma: plain data in, plain values out.
 
 # Requirements
-Write two functions in `src/lib/growth.ts`:
+Write these in `src/lib/growth.ts`:
 
-**`longestStreak(checkInDays: string[]): number`**
-- Input is a list of `"YYYY-MM-DD"` (UTC) strings, one entry per check-in;
-  duplicates on the same day are expected and must not inflate the count.
-- Returns the length of the longest run of *consecutive* calendar days
-  present in the input, regardless of input order.
-- Empty input returns `0`.
+**`formatDayLabel(isoDay: string): string`**
+- "2026-07-20" -> "Jul 20". Strips leading zeros from the day number.
+- Returns the input unchanged if it isn't parseable (never throws).
+- Note the deliberate oddity: the growth API emits these **display labels**
+  rather than ISO dates, because `growth/page.tsx` renders `date` directly
+  and strips the month for chart tick labels. Keep them short.
 
-**`buildRunningBalance(entries: DailyLedgerEntry[], days: string[], startingBalance?: number): number[]`**
-- `entries` are `{ date: "YYYY-MM-DD", amount: number }` ledger rows (can
-  include multiple entries for the same day — sum them).
-- `days` is an ascending ordered list of days to report on.
-- `startingBalance` (default 0) is the running total carried in from
-  before the first day in `days` — the caller is responsible for summing
-  everything prior; this function should not need to know about "all
-  history," just the window plus a starting number.
-- Returns one cumulative balance per day in `days`, in the same order,
-  correctly carrying the balance forward through days with no entries.
+**`bucketLedgerByDay(entries: LedgerEntry[]): Map<string, DayTotals>`**
+- Splits ledger rows into per-day `{ earned, penalty }`.
+- Positive amounts accumulate into `earned`; negative amounts accumulate
+  into `penalty` **as absolute values** (the chart draws penalty height, so
+  it wants a positive magnitude).
+- Multiple entries on the same day are summed.
+
+**`dayStatus(day, today, checkedInDays): "done" | "skipped" | "due" | "future"`**
+- `"done"` if the day is in `checkedInDays`.
+- `"future"` if the day is after `today`.
+- `"due"` if the day *is* `today` and has no check-in — today is never
+  "skipped" while it's still in progress.
+- `"skipped"` for any earlier day with no check-in.
+- Derive this from **actual check-in dates**, never from penalty ledger
+  dates: penalties are written lazily whenever the user reopens the app, so
+  their dates don't identify which day was actually skipped.
 
 # Interface
 ```ts
-interface DailyLedgerEntry {
+interface LedgerEntry {
   date: string; // "YYYY-MM-DD", UTC
   amount: number;
+}
+
+interface DayTotals {
+  earned: number;
+  penalty: number;
 }
 ```
 
 # Dependencies
-None — this module must stay pure, same rule as points.ts.
+None — this module must stay pure.
 
 # Acceptance criteria (see tests/growth.test.ts)
-- `longestStreak([])` -> `0`.
-- Days `20, 21, 22, 24` (gap at 23) -> longest streak `3`, not `4`.
-- Duplicate same-day entries don't inflate the streak count.
-- Unsorted input produces the same result as sorted input.
-- `buildRunningBalance` with no entries carries `startingBalance` forward
-  unchanged across every day.
-- Multiple same-day entries are summed before being added to the running
-  total.
+- `formatDayLabel("2026-01-05")` -> `"Jan 5"`; unparseable input returns
+  unchanged.
+- A `-40` ledger entry becomes `{ earned: 0, penalty: 40 }` — penalty is
+  positive.
+- Two positive entries on one day are summed into a single `earned` value.
+- `dayStatus` returns `"due"` (not `"skipped"`) for today with no check-in,
+  and `"skipped"` for a past day with no check-in.

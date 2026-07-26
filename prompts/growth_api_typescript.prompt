@@ -1,51 +1,54 @@
 # Role
 You are writing the growth dashboard's data endpoint for TinyWins — the
-backend half of "at the end of the period, graph how much the user has
-grown" (points trend + completion history combined, per the pivot plan).
+backend half of "at the end of the period, show how much the user has
+grown." It is scoped to **one goal at a time**, because the UI has a goal
+picker and renders one goal's history at a time.
 
 # Requirements
-Build `src/app/api/growth/route.ts`:
+Build `src/app/api/growth/route.ts`.
 
-**`GET`** — returns `GrowthResponse` for the demo user, covering a rolling
-30-day window (`WINDOW_DAYS`), clipped so it never starts before the
-user's `createdAt`:
+**`GET /api/growth?goalId=<id>`** -> `GrowthResponse`.
 
-1. Build the ordered list of UTC calendar days in the window.
-2. Compute `startingBalance` as the sum of every `PointsLedger` row dated
-   before the window starts — the first point on the graph must reflect
-   true history, not reset to zero.
-3. Use `buildRunningBalance` (from `growth.ts`) over the in-window ledger
-   rows to get a per-day cumulative `pointsBalance`.
-4. `checkedIn` for a day is true if any `CheckIn` row (joined through its
-   goal to this user) has `createdAt` on that day.
-5. `missed` for a day is true if a `PointsLedger` row with
-   `reason: "penalty"` was created that day. **Disclose the known
-   simplification**: because penalties are applied lazily whenever the
-   user reopens the app, a multi-day absence shows all missed days
-   clustered on the day of return, not spread across the days actually
-   missed. Don't try to fix this by inferring the "real" missed dates —
-   just disclose it (add a line to DISCLOSURES.md).
-6. `currentStreak` is `user.streak`. `longestStreak` is
-   `longestStreak()` from `growth.ts` over the full history of distinct
-   check-in days (not just the 30-day window — a user's best streak may
-   be older than the window).
+- `goalId` is required -> 400 when missing. 404 when the goal doesn't belong
+  to the demo user (scope the query by `userId`, don't just look up by id).
+- Report over the goal's run: `startDate` through **today, or `endDate` if
+  the run already finished** — never past the end of the goal. A goal whose
+  `startDate` is in the future reports empty series rather than erroring.
+- `pointsSeries`: one entry per day in range, `{ date, earned, penalty }`,
+  built with `bucketLedgerByDay` over **goal-scoped** ledger rows only
+  (redemptions are account-wide and must not appear in a goal's chart).
+  `date` is a short display label from `formatDayLabel`.
+- `history`: one entry per day in range, status from `dayStatus`:
+  - `"done"` -> include `verdict` from that day's `CheckIn` and `points`
+    (the day's earned total).
+  - `"skipped"` -> `points: -goal.penaltyPoints`, the **nominal** cost of
+    skipping a period. Disclose that the real deduction is written lazily on
+    the user's next visit, so its ledger date can differ from the day
+    skipped; `summary.netPoints` uses real ledger sums, so headline numbers
+    stay exact.
+  - `"due"` / `"future"` -> no `points`, no `verdict`.
+- `summary`:
+  - `checkInsDone` — count of `CheckIn` rows for the goal.
+  - `checkInsExpected` — number of days in the reported range.
+  - `skips` — count of `"skipped"` history entries (derived from real
+    check-in dates, not from penalty rows).
+  - `netPoints` — sum of all goal-scoped ledger amounts (earned minus
+    penalties), so it can legitimately be negative.
 
 # Interface
-Reference `GrowthResponse` and `GrowthPoint` from `src/lib/contract.ts`
-(already added there).
+Reference `GrowthResponse` and `GoalSummary` from `src/lib/contract.ts`.
 
 # Dependencies
 <include>src/lib/growth.ts</include>
+<include>src/lib/goals.ts</include>
 <include>src/lib/contract.ts</include>
 <include>src/lib/prisma.ts</include>
 
 # Acceptance criteria
-- Response covers exactly `min(30, daysSinceAccountCreated) + 1` days,
-  ascending by date.
-- A day with two check-ins on two different goals still shows
-  `checkedIn: true` (not double-counted into anything numeric).
-- `longestStreak` reflects full history even when the best streak falls
-  outside the 30-day window.
-- No demo user (`prisma.user.findFirst()` returns null) -> 500 with a
-  clear "run npm run seed" message, matching the existing pattern in
-  `rewards/route.ts`.
+- Missing `goalId` -> 400; a goal id belonging to another user -> 404.
+- A goal created today returns exactly one day in `pointsSeries` and
+  `history`, with that day `"due"` (or `"done"` after a check-in) — never
+  `"skipped"`.
+- A finished goal's range stops at its `endDate`, not today.
+- `netPoints` goes negative when penalties exceed earnings.
+- Redemption ledger rows never appear in any goal's `pointsSeries`.

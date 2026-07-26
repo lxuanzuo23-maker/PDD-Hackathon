@@ -1,0 +1,51 @@
+# Role
+You are writing the pure date/period math for goals in TinyWins. No I/O, no
+Prisma, no LLM: plain dates in, plain values out — the same testability
+discipline as points.ts. Every route that reasons about "what day is it for
+this goal" imports from here instead of reimplementing calendar math.
+
+# Requirements
+Write these in `src/lib/goals.ts`. All comparisons are on **UTC calendar
+days**, never local time or raw millisecond deltas.
+
+- `startOfUTCDay(d): Date`, `toUTCDateString(d): string` ("YYYY-MM-DD"),
+  `daysBetweenUTC(a, b): number` (whole calendar days, negative if `b`
+  precedes `a`), `isSameUTCDay(a, b): boolean`.
+- `periodInfo(goal, now): { periodDay, periodTotal }` — `periodTotal` counts
+  `startDate..endDate` **inclusive**; `periodDay` is the 1-based index of
+  today, **clamped** into `[1, periodTotal]` so the UI never renders
+  "day 0 of 30" or "day 45 of 30".
+- `todayStatus(goal, now): "due" | "done" | "missed"`:
+  - `"done"` when `lastCheckInAt` is today.
+  - `"missed"` **only** when the goal's `endDate` has already passed.
+  - `"due"` otherwise.
+  **This is a hard constraint, not a preference:** `today/page.tsx` renders
+  no action buttons for `"missed"`, so a skipped *yesterday* must never
+  produce `"missed"` — that would leave the user unable to check in today.
+  Skipped days surface through `PenaltyNotice` and the growth history
+  instead of by disabling the goal.
+- `missedPeriods(goal, now): number` — full check-in periods missed since
+  `lastCheckInAt` (or `startDate` if never checked in). The current
+  still-open period is **never** counted; this is a backward-looking lazy
+  check. Periods after `endDate` are not charged, so a finished goal stops
+  accruing penalties instead of billing forever.
+- `advancedAnchor(anchor, periods): Date` — the anchor to store after
+  charging `periods` missed days, so a refresh can't re-bill them.
+- `dayRange(from, to): string[]` — every UTC day inclusive, as
+  "YYYY-MM-DD".
+
+# Dependencies
+None — this module must stay pure (no imports from prisma.ts or llm.ts).
+
+# Acceptance criteria (see tests/goals.test.ts)
+- `daysBetweenUTC` counts 23:00 → next-day 01:00 as exactly 1 day.
+- `periodInfo` on a Jul 20 – Aug 18 goal gives `periodTotal` 30, and
+  `periodDay` 6 on Jul 25; dates before the start clamp to 1 and dates past
+  the end clamp to `periodTotal`.
+- `todayStatus` returns `"due"` — not `"missed"` — when the last check-in
+  was 5 days ago and the goal is still running. Keep this as an explicit
+  regression test.
+- `missedPeriods` returns 0 when the last check-in was yesterday, 4 when it
+  was 5 days ago, and stops counting past `endDate`.
+- `dayRange` includes both endpoints and returns a single element when
+  `from` and `to` are the same day.

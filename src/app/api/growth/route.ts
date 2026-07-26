@@ -1,22 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { longestStreak, buildRunningBalance } from "@/lib/growth";
-import type { GrowthResponse, GrowthPoint } from "@/lib/contract";
+import { bucketLedgerByDay, dayStatus, formatDayLabel } from "@/lib/growth";
+import { dayRange, startOfUTCDay, toUTCDateString } from "@/lib/goals";
+import type { GoalSummary, GrowthResponse } from "@/lib/contract";
 
-// Reads live ledger/check-in history — must not be statically cached.
 export const dynamic = "force-dynamic";
 
-const WINDOW_DAYS = 30;
+export async function GET(req: NextRequest) {
+  const goalId = req.nextUrl.searchParams.get("goalId");
+  if (!goalId) {
+    return NextResponse.json({ error: "goalId is required" }, { status: 400 });
+  }
 
-function toUTCDateString(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function startOfUTCDay(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
-export async function GET() {
   const user = await prisma.user.findFirst();
   if (!user) {
     return NextResponse.json(
@@ -25,69 +20,102 @@ export async function GET() {
     );
   }
 
-  const today = startOfUTCDay(new Date());
-  const windowStart = new Date(today);
-  windowStart.setUTCDate(windowStart.getUTCDate() - (WINDOW_DAYS - 1));
-  const userStart = startOfUTCDay(user.createdAt);
-  // Don't report before the account existed, but cap the window so old
-  // accounts don't return an ever-growing array.
-  const rangeStart = userStart > windowStart ? userStart : windowStart;
-
-  const days: string[] = [];
-  for (
-    let d = new Date(rangeStart);
-    d.getTime() <= today.getTime();
-    d.setUTCDate(d.getUTCDate() + 1)
-  ) {
-    days.push(toUTCDateString(d));
+  const goal = await prisma.goal.findFirst({
+    where: { id: goalId, userId: user.id },
+  });
+  if (!goal) {
+    return NextResponse.json({ error: "That goal no longer exists." }, { status: 404 });
   }
 
-  const [allLedgerRows, checkIns, penaltyRows] = await Promise.all([
-    prisma.pointsLedger.findMany({
-      where: { userId: user.id },
-      select: { amount: true, createdAt: true },
-    }),
+  const now = new Date();
+  const today = startOfUTCDay(now);
+  const todayLabel = toUTCDateString(today);
+
+  // Report from the goal's start through today, or through its end date if
+  // the run already finished — never past the end of the goal.
+  const rangeEnd = goal.endDate.getTime() < today.getTime() ? goal.endDate : today;
+  const days =
+    goal.startDate.getTime() > rangeEnd.getTime()
+      ? [] // goal starts in the future: nothing to report yet
+      : dayRange(goal.startDate, rangeEnd);
+
+  const [checkIns, ledgerRows] = await Promise.all([
     prisma.checkIn.findMany({
-      where: { goal: { userId: user.id } },
-      select: { createdAt: true },
+      where: { goalId: goal.id },
+      select: { createdAt: true, verdict: true, multiplier: true },
+      orderBy: { createdAt: "asc" },
     }),
     prisma.pointsLedger.findMany({
-      where: { userId: user.id, reason: "penalty" },
-      select: { createdAt: true },
+      where: { userId: user.id, goalId: goal.id },
+      select: { amount: true, createdAt: true },
     }),
   ]);
 
-  // Starting balance = everything before the reported window, so the
-  // first point on the graph reflects true history instead of resetting
-  // to zero.
-  const startingBalance = allLedgerRows
-    .filter((r) => r.createdAt < rangeStart)
-    .reduce((sum, r) => sum + r.amount, 0);
-
-  const dailyEntries = allLedgerRows
-    .filter((r) => r.createdAt >= rangeStart)
-    .map((r) => ({ date: toUTCDateString(r.createdAt), amount: r.amount }));
-
-  const balances = buildRunningBalance(dailyEntries, days, startingBalance);
+  const byDay = bucketLedgerByDay(
+    ledgerRows.map((row) => ({
+      date: toUTCDateString(row.createdAt),
+      amount: row.amount,
+    }))
+  );
 
   const checkedInDays = new Set(checkIns.map((c) => toUTCDateString(c.createdAt)));
-  // Simplification (disclosed): a missed-day penalty is dated to whenever
-  // the lazy check ran, not the actual missed calendar day — so a return
-  // visit after several missed days will show them all clustered on the
-  // day the app was reopened, not spread across the days actually missed.
-  const penalizedDays = new Set(penaltyRows.map((p) => toUTCDateString(p.createdAt)));
+  const verdictByDay = new Map(
+    checkIns.map((c) => [toUTCDateString(c.createdAt), c.verdict as "accepted" | "partial"])
+  );
 
-  const points: GrowthPoint[] = days.map((date, i) => ({
-    date,
-    pointsBalance: balances[i],
-    checkedIn: checkedInDays.has(date),
-    missed: penalizedDays.has(date),
-  }));
+  const pointsSeries = days.map((day) => {
+    const totals = byDay.get(day) ?? { earned: 0, penalty: 0 };
+    return { date: formatDayLabel(day), earned: totals.earned, penalty: totals.penalty };
+  });
+
+  const history = days.map((day) => {
+    const status = dayStatus(day, todayLabel, checkedInDays);
+    const totals = byDay.get(day);
+
+    if (status === "done") {
+      return {
+        date: formatDayLabel(day),
+        status,
+        verdict: verdictByDay.get(day),
+        points: totals?.earned ?? 0,
+      };
+    }
+    if (status === "skipped") {
+      // Nominal cost of skipping a period. The actual deduction is written
+      // lazily on the user's next visit, so its ledger date may differ from
+      // the day skipped (see DISCLOSURES.md) — the summary's netPoints below
+      // uses real ledger sums, so the headline numbers stay exact.
+      return { date: formatDayLabel(day), status, points: -goal.penaltyPoints };
+    }
+    return { date: formatDayLabel(day), status };
+  });
+
+  const checkInsExpected = days.length;
+  const checkInsDone = checkIns.length;
+  const netPoints = ledgerRows.reduce((sum, row) => sum + row.amount, 0);
+
+  const summary: GrowthResponse["summary"] = {
+    checkInsDone,
+    checkInsExpected,
+    skips: Math.max(history.filter((entry) => entry.status === "skipped").length, 0),
+    netPoints,
+  };
+
+  const goalSummary: GoalSummary = {
+    id: goal.id,
+    title: goal.title,
+    startDate: goal.startDate.toISOString(),
+    endDate: goal.endDate.toISOString(),
+    createdAt: goal.createdAt.toISOString(),
+    status:
+      goal.status === "active" && goal.endDate.getTime() >= now.getTime() ? "active" : "ended",
+  };
 
   const response: GrowthResponse = {
-    points,
-    currentStreak: user.streak,
-    longestStreak: longestStreak(Array.from(checkedInDays)),
+    goal: goalSummary,
+    summary,
+    pointsSeries,
+    history,
   };
 
   return NextResponse.json(response);

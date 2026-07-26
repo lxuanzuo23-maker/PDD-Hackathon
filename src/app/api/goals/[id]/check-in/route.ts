@@ -2,29 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyCompletion } from "@/lib/verifier";
 import { calculatePoints } from "@/lib/points";
-import type { CheckInRequest, CheckInResponse } from "@/lib/contract";
+import { isSameUTCDay } from "@/lib/goals";
+import type { CheckInRequest, CheckInResponse, CompanionMood, Mood } from "@/lib/contract";
 
-/** True if `a` and `b` fall in the same UTC calendar day. */
-function isSameUTCDay(a: Date, b: Date): boolean {
-  return (
-    a.getUTCFullYear() === b.getUTCFullYear() &&
-    a.getUTCMonth() === b.getUTCMonth() &&
-    a.getUTCDate() === b.getUTCDate()
-  );
-}
+const VALID_MOODS: Mood[] = ["rough", "low", "okay", "good", "great"];
 
-/** True if `a` and `b` fall in the same UTC calendar week (Sun-Sat). */
-function isSameUTCWeek(a: Date, b: Date): boolean {
-  const startOfWeek = (d: Date) => {
-    const copy = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-    copy.setUTCDate(copy.getUTCDate() - copy.getUTCDay());
-    return copy.getTime();
-  };
-  return startOfWeek(a) === startOfWeek(b);
-}
-
-// Maps the verifier's continuous multiplier to the P0 verdict bands.
-// "rejected" is not emitted in P0 — see DESIGN.md F5.
+/**
+ * Maps the verifier's continuous multiplier to the P0 verdict bands.
+ * "rejected" is not emitted in P0 — it would require a verifier contract
+ * with multiplier 0, not a reinterpretation of a clamped 0.5x.
+ */
 function verdictFromMultiplier(multiplier: number): "accepted" | "partial" {
   return multiplier >= 1.5 ? "accepted" : "partial";
 }
@@ -33,40 +20,43 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const body = await req.json();
-  const { answers, feeling } = body as Partial<CheckInRequest>;
+  const body = await req.json().catch(() => ({}));
+  const { answers } = body as Partial<CheckInRequest>;
 
-  const trimmedAnswers = (answers ?? []).map((a) => (typeof a === "string" ? a.trim() : ""));
-  const validAnswers =
-    Array.isArray(answers) &&
-    answers.length === 2 &&
-    trimmedAnswers.every((a) => a.length > 0);
-  const validFeeling = typeof feeling === "string" && feeling.trim().length > 0;
-
-  if (!validAnswers || !validFeeling) {
+  // answers is positional: [whatIDid, hardestPart, mood]
+  if (!Array.isArray(answers) || answers.length !== 3) {
     return NextResponse.json(
-      { error: "answers must be a two-element array of non-empty strings, and feeling is required" },
+      { error: "Answer all three check-in questions." },
+      { status: 400 }
+    );
+  }
+
+  const whatIDid = typeof answers[0] === "string" ? answers[0].trim() : "";
+  const hardestPart = typeof answers[1] === "string" ? answers[1].trim() : "";
+  const mood = answers[2] as Mood;
+
+  if (!whatIDid || !hardestPart || !VALID_MOODS.includes(mood)) {
+    return NextResponse.json(
+      { error: "Answer all three check-in questions." },
       { status: 400 }
     );
   }
 
   const goal = await prisma.goal.findUnique({ where: { id: params.id } });
   if (!goal) {
-    return NextResponse.json({ error: "goal not found" }, { status: 404 });
+    return NextResponse.json({ error: "That goal no longer exists." }, { status: 404 });
   }
   if (goal.status !== "active") {
-    return NextResponse.json({ error: "goal is not active" }, { status: 409 });
+    return NextResponse.json({ error: "That goal has ended." }, { status: 409 });
   }
 
   const now = new Date();
-  const alreadyCheckedInThisPeriod =
-    goal.lastCheckInAt !== null &&
-    (goal.checkInFrequency === "weekly"
-      ? isSameUTCWeek(goal.lastCheckInAt, now)
-      : isSameUTCDay(goal.lastCheckInAt, now));
-  if (alreadyCheckedInThisPeriod) {
+
+  // Per-period idempotency: one check-in per goal per UTC day. Checked
+  // before the verifier so a double-tap can't burn an LLM call.
+  if (goal.lastCheckInAt && isSameUTCDay(goal.lastCheckInAt, now)) {
     return NextResponse.json(
-      { error: "already checked in for this period" },
+      { error: "Already checked in today — see you tomorrow." },
       { status: 409 }
     );
   }
@@ -76,17 +66,12 @@ export async function POST(
     return NextResponse.json({ error: "user not found" }, { status: 404 });
   }
 
-  // NOTE for Person C: verifyCompletion currently only takes the two
-  // answers. It needs to also accept `feeling` so the honesty check can
-  // weigh emotional-consistency against the stated answers — update
-  // verifier.ts's signature and prompts/verifier_typescript.prompt
-  // together. Passed through as a third arg here so this route doesn't
-  // need to change again once that lands; verifier.ts should start
-  // reading it.
+  // Person C's verifier takes the mood as an optional third element of the
+  // answers tuple (not a separate argument) and treats it as supporting
+  // reflection context — a hard feeling is never itself a penalty.
   const { multiplier, verdict: verdictMessage } = await verifyCompletion(
     { title: goal.title, difficulty: goal.difficulty as 1 | 2 | 3 },
-    [trimmedAnswers[0], trimmedAnswers[1]],
-    feeling
+    [whatIDid, hardestPart, mood]
   );
 
   const isFirstToday = !user.lastStreakAt || !isSameUTCDay(user.lastStreakAt, now);
@@ -102,7 +87,7 @@ export async function POST(
     difficulty: goal.difficulty as 1 | 2 | 3,
     multiplier,
     isFirstToday,
-    pointsEarnedToday: earnedTodayAgg._sum.amount ?? 0,
+    pointsEarnedToday: Math.max(earnedTodayAgg._sum.amount ?? 0, 0),
   });
 
   const verdict = verdictFromMultiplier(multiplier);
@@ -115,8 +100,8 @@ export async function POST(
     prisma.checkIn.create({
       data: {
         goalId: goal.id,
-        answers: JSON.stringify(trimmedAnswers),
-        feeling,
+        answers: JSON.stringify([whatIDid, hardestPart]),
+        feeling: mood,
         verdict,
         verdictMessage,
         multiplier,
@@ -129,6 +114,9 @@ export async function POST(
         reason: "goal-checkin",
         goalId: goal.id,
       },
+    }),
+    prisma.moodCheckIn.create({
+      data: { userId: user.id, mood },
     }),
     ...(isFirstToday
       ? [
@@ -163,7 +151,7 @@ export async function POST(
     companion: {
       level: companion.level,
       xp: companion.xp,
-      mood: companion.mood as "content" | "proud" | "sleepy" | "worried",
+      mood: companion.mood as CompanionMood,
     },
   };
 

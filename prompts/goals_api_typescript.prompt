@@ -1,100 +1,109 @@
 # Role
-You are writing the Goals API for TinyWins — the platform spine that
-replaced the old flat one-off Task with open-ended, recurring Goals (lose
-weight, buy a car, build a project, start a startup — user's own words).
-This module owns goal CRUD, the lazy missed-day penalty check, and the
-recurring check-in that awards points and extends streaks.
+You are writing the Goals API for TinyWins — the platform spine behind
+open-ended, recurring goals (lose weight, buy a car, build a project, start
+a startup — user's own words). This module owns goal listing/creation, the
+lazy missed-day penalty check, and the daily check-in that awards points and
+extends streaks.
+
+All response shapes come from `src/lib/contract.ts`, which is reconciled
+against Person B's `src/lib/ui-data.ts`. Do not invent field names here.
 
 # Requirements
 
-Build two route files:
-
 ## `src/app/api/goals/route.ts`
 
-**`GET`** — returns `GoalsResponse`. Before reading goals to respond with,
-run the **lazy missed-day penalty check** across all of the user's
-`active` goals:
-- For each goal, compute how many full check-in periods have passed since
-  `lastCheckInAt` (or `startDate` if never checked in) without a check-in,
-  using UTC calendar-day math. The current still-open period (today, or
-  this week) is never counted as missed — this is a backward-looking lazy
-  check, triggered only because the user opened the app, not a scheduled
-  job.
-- If a goal has 1+ missed periods, deduct
-  `calculateMissedDayPenalty({ penaltyPerPeriod: goal.penaltyPoints, missedPeriods })`
-  points via a `PointsLedger` row with `reason: "penalty"`, and advance
-  `lastCheckInAt` forward by exactly that many periods (not to "now") so
-  the same missed days are never charged twice on a later visit.
-- Collect every penalty actually applied into `penaltiesApplied` on the
-  response (omit the key entirely if none were applied this call).
-- After any penalty writes, return the fresh goal list, `streakDays`
-  (`user.streak`), `pointsBalance` (ledger sum), and `companion`.
+**`GET`** -> `GoalListResponse` `{ active, ended }` — the goal *picker* feed
+used by the growth page. Map every goal to `GoalSummary`; a goal counts as
+`"ended"` when its status isn't `active` **or** its `endDate` has passed.
 
-**`POST`** — validates `CreateGoalRequest` (title, category, difficulty
-1-3, valid `endDate`, `checkInFrequency` is `"daily"` or `"weekly"`,
-`penaltyPoints >= 0`) and creates the goal. 400 on any validation failure,
-before touching the database.
+**This route must NOT run the penalty check.** Keeping the deduction out of
+here means opening the growth page can never silently cost the user points.
+The penalty lives in `/api/goals/today` only.
 
-## `src/app/api/goals/[id]/checkin/route.ts`
+**`POST`** — body is `CreateGoalRequest` `{ title, endDate, cadence }`. The
+UI only collects those three, so `difficulty` and `penaltyPoints` come from
+`DEFAULT_GOAL_DIFFICULTY` and `DEFAULT_MISSED_PENALTY` in `contract.ts`
+rather than being invented in the route, and `category` is stored as
+`"general"` (goals are user-defined; don't guess a taxonomy). Validate:
+non-empty title, parseable `endDate` that is not in the past, and `cadence`
+either absent or `"daily"`. Return the created goal as `GoalToday` with 201.
 
-**`POST`** — body is `CheckInRequest` (`answers: [string, string]`,
-`feeling: string`):
-1. Validate both answers are non-empty after trimming, and `feeling` is
-   non-empty — 400 before any DB or LLM work.
-2. Load the goal; 404 if missing.
-3. If `goal.status !== "active"` → 409.
-4. **Idempotency is per-period, not permanent** (this is the key
-   difference from the old one-off Task complete route): if
-   `lastCheckInAt` falls in the same UTC day (daily goals) or the same
-   UTC week (weekly goals) as now, return 409 `"already checked in for
-   this period"` — do not spend an LLM call on it.
-5. Run the verifier → `{ multiplier, verdict: verdictMessage }`; clamp is
-   the verifier's job, not this route's.
-6. Map multiplier to the P0 verdict band: `>= 1.5` → `"accepted"`,
-   `0.5..1.5` → `"partial"`. `"rejected"` is not emitted in P0.
-7. Determine `isFirstToday` from `User.lastStreakAt` (UTC day comparison)
-   *before* calculating points.
-8. `calculatePoints(...)` with the frozen economy formula from
-   `points.ts` / `contract.ts`.
-9. In one transaction: advance `goal.lastCheckInAt` to now, write a
-   `CheckIn` row (`answers`, `feeling`, `verdict`, `verdictMessage`,
-   `multiplier`), write a `PointsLedger` row (`reason: "goal-checkin"`),
-   and if `isFirstToday`, increment `user.streak` and set
-   `user.lastStreakAt` to now.
-10. Return the full `CheckInResponse` (verdict, verdictMessage,
-    multiplier, pointsAwarded, newBalance, streakDays, companion).
+Error messages are shown directly to the user, so write them in plain
+second person ("Pick a valid end date."), not as API jargon.
 
-# Interface
-Reference `Goal`, `GoalsResponse`, `CreateGoalRequest`, `CheckInRequest`,
-`CheckInResponse`, `PenaltyResult` from `src/lib/contract.ts` — these are
-already added there. Use `calculatePoints` and `calculateMissedDayPenalty`
-from `src/lib/points.ts`, and `verifyCompletion` from `src/lib/verifier.ts`.
+## `src/app/api/goals/today/route.ts`
 
-**Dependency on Person C:** `verifyCompletion` currently only accepts the
-two answers, not `feeling`. It needs to accept a third argument so the
-honesty check can weigh the stated feeling against the answers — update
-`verifier.ts` and `prompts/verifier_typescript.prompt` together. The
-checkin route already calls it with `feeling` as a third argument so
-nothing here needs to change once that lands.
+**`GET`** -> `GoalsTodayResponse` — the daily action feed, and the **one**
+place the lazy missed-day penalty check runs (no background job exists;
+that's a deliberate scope decision). For each `active` goal:
+
+1. `missedPeriods(goal, now)` from `goals.ts`; skip if 0.
+2. `calculateMissedDayPenalty({ penaltyPerPeriod: goal.penaltyPoints, missedPeriods })`.
+3. In one transaction: write a negative `PointsLedger` row with
+   `reason: "penalty"` and `goalId`, and set `lastCheckInAt` to
+   `advancedAnchor(anchor, missed)` — **advance by exactly the periods
+   charged, never to `now`**, or a refresh will re-bill the same days.
+4. Push a `PenaltyNotice` whose `id` is the **ledger row id**; the UI dedupes
+   notices on it so a refresh doesn't re-announce a penalty already seen.
+
+Then re-read goals/ledger/companion (so the response reflects the writes),
+fill each notice's `newBalance` with the final balance, and derive
+`todayStatus` / `periodDay` / `periodTotal` per goal via `goals.ts`.
+`penaltiesApplied` is always present — an empty array when nothing was
+deducted.
+
+## `src/app/api/goals/[id]/check-in/route.ts`
+
+**`POST`** — body is `CheckInRequest` `{ answers }` where `answers` is
+**positional, exactly three elements**: `[whatIDid, hardestPart, mood]`, and
+`mood` is a `Mood` enum value (the UI collects it as a 5-option tap scale,
+not free text).
+
+1. Validate three elements, both texts non-empty after trimming, and `mood`
+   in the allowed set -> 400 `"Answer all three check-in questions."` before
+   any DB or LLM work.
+2. 404 if the goal is missing; 409 if its status isn't `active`.
+3. **Per-period idempotency** (the key difference from the retired one-off
+   task route): if `lastCheckInAt` is the same UTC day as now, return 409
+   `"Already checked in today — see you tomorrow."` — checked *before* the
+   verifier so a double-tap can't burn an LLM call.
+4. Run the verifier, then map the multiplier to a verdict band:
+   `>= 1.5` -> `"accepted"`, below -> `"partial"`. `"rejected"` is not
+   emitted in P0.
+5. Compute `isFirstToday` from `User.lastStreakAt` (UTC day) **before**
+   calculating points; floor `pointsEarnedToday` at 0 so a day that's net
+   negative from penalties doesn't inflate the remaining daily budget.
+6. One transaction: advance `goal.lastCheckInAt`, write the `CheckIn` row
+   (`answers` JSON, `feeling` = mood, `verdict`, `verdictMessage`,
+   `multiplier`), write the `PointsLedger` row (`reason: "goal-checkin"`),
+   write a `MoodCheckIn` row for the recurring mood history, and if
+   `isFirstToday` increment `user.streak` and set `lastStreakAt`.
+7. Return the full `CheckInResponse`.
+
+**Verifier signature (Person C's, already landed):** `verifyCompletion`
+takes the mood as an **optional third element of the answers tuple**, not a
+separate argument — call it as
+`verifyCompletion({ title, difficulty }, [whatIDid, hardestPart, mood])`.
+The verifier treats the feeling as supporting reflection context; a hard or
+negative feeling is never by itself a reason to score lower.
 
 # Dependencies
 <include>src/lib/contract.ts</include>
+<include>src/lib/goals.ts</include>
 <include>src/lib/points.ts</include>
 <include>src/lib/verifier.ts</include>
 <include>src/lib/prisma.ts</include>
 
 # Acceptance criteria
-- Opening `/api/goals` after 3 missed daily periods deducts
-  `3 * goal.penaltyPoints` exactly once, and a second immediate call makes
-  no further deduction (the anchor date advanced correctly).
-- A fresh goal (never checked in, created today) produces zero penalty on
-  first load.
-- Check-in on a daily goal, then an immediate second check-in same day →
-  409, no double points, no second `CheckIn` row.
-- A weekly goal checked in once does not allow a second check-in until the
-  following UTC week.
-- First qualifying check-in of the day increments `user.streak` by
-  exactly 1 and awards the flat `+5` streak bonus; a second check-in that
-  same day (on a different goal) does not increment streak again.
-- `answers` with an empty/whitespace-only string, or missing `feeling`,
-  returns 400 before any verifier call.
+- `/api/goals/today` after 3 missed daily periods deducts
+  `3 * penaltyPoints` exactly once; an immediate second call deducts nothing.
+- A goal created today produces zero penalty on first load.
+- Check-in, then an immediate second check-in the same day -> 409, no double
+  points, no second `CheckIn` row.
+- First check-in of the day increments `user.streak` by exactly 1 and awards
+  the flat `+5`; a second check-in that day on a *different* goal awards
+  points but does not increment streak again.
+- `answers` with a whitespace-only entry, or an invalid `mood`, returns 400
+  with no verifier call.
+- `GET /api/goals` never writes to the ledger, under any goal state.
+- A goal whose `endDate` has passed appears under `ended`, not `active`.
