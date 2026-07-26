@@ -8,7 +8,14 @@
  * Person A/C can replace the route implementations without rewriting pages.
  */
 
+import type { ProfileResponse } from "@/lib/contract";
+
 export const isFixtureMode = process.env.NEXT_PUBLIC_UI_DATA_MODE === "fixture";
+
+// Profile shape is imported from the frozen contract rather than redeclared
+// here — redeclaring types locally is what caused the API/UI drift the team
+// had to reconcile once already.
+export type { ProfileResponse };
 
 export type Mood = "rough" | "low" | "okay" | "good" | "great";
 export type CompanionMood = "content" | "proud" | "sleepy" | "worried";
@@ -349,6 +356,34 @@ export async function getGrowth(goalId: string): Promise<GrowthResponse> {
     };
   }
   return fetchJson(`/api/growth?goalId=${encodeURIComponent(goalId)}`);
+}
+
+export async function getProfile(): Promise<ProfileResponse> {
+  if (isFixtureMode) {
+    return {
+      onboarded: true,
+      age: 27,
+      gender: "prefer not to say",
+      habitToImprove: "Going to bed before midnight",
+      newHabitGoal: "Ship something small every week",
+      visionBoardThemes: ["fitness", "career growth", "calm"],
+      communicationStyle: "encouraging",
+      motivationStyle: "support",
+      recentMoods: [
+        { mood: "good", date: today },
+        { mood: "okay", date: "2026-07-24" },
+        { mood: "low", date: "2026-07-23" },
+      ],
+      stats: {
+        streakDays: fixtureStreak,
+        pointsBalance: fixtureBalance,
+        activeGoals: fixtureGoals.length,
+        totalCheckIns: 5,
+      },
+      companion: fixtureCompanion,
+    };
+  }
+  return fetchJson("/api/profile");
 }
 
 export async function getRewards(): Promise<RewardsResponse> {

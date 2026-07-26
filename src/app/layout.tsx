@@ -20,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/coach">Coach</Link>
             <Link href="/growth">Growth</Link>
             <Link href="/rewards">Rewards</Link>
+            <Link href="/profile">You</Link>
           </div>
         </nav>
       </body>

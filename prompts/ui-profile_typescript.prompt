@@ -1,0 +1,52 @@
+# Role
+You are building the "You" screen for TinyWins — a read-only profile that
+shows the user their stats, what they came here for, their vision board, how
+they've been feeling, and, importantly, **how the coach has decided to talk
+to them**.
+
+# Requirements
+Build `src/app/profile/page.tsx` as a client component using
+`getProfile()` from `@/lib/ui-data`.
+
+Sections, in order:
+
+1. **Stats strip** — streak, points, active goals, total check-ins, in a
+   four-up grid. Shown even when the user hasn't onboarded.
+2. **"How your coach talks to you"** — the `communicationStyle` and
+   `motivationStyle` as chips, each with a one-line plain-English gloss
+   (e.g. `direct` -> "Gets to the point.", `support` -> "Motivates with
+   reassurance."). Follow it with a caveat that this is a first guess that
+   shifts as the user checks in — the traits are a heuristic and the UI
+   should not present them as a verdict on the person.
+3. **"What you came here for"** — `habitToImprove` and `newHabitGoal`, only
+   rendered if at least one is present.
+4. **Vision board** — the stored image plus theme chips. When the image
+   exists but themes are empty (analysis unavailable), say so gently rather
+   than showing an empty row: the image is still theirs to look at.
+5. **"How you've been feeling"** — recent moods with emoji and short dates.
+6. **Details** — age and gender, last and understated.
+
+**Not-yet-onboarded state:** when `onboarded` is false, show a calm empty
+state with a link to `/onboarding` ("Set up your profile"), *plus* the stats
+strip — a user who has been checking in should still see their progress.
+
+**States:** `loading` -> `loaded` | `error`. The error banner includes a
+Retry button and does not discard the previous view.
+
+Add a **"You"** entry to the bottom nav in `src/app/layout.tsx`.
+
+# Dependencies
+<include>src/lib/ui-data.ts</include>
+<include>src/app/api/profile/route.ts</include>
+
+# Acceptance criteria
+- Renders without error for an un-onboarded user, showing the setup link and
+  the stats strip.
+- Sections with no data are omitted entirely rather than rendering empty
+  headings.
+- A vision board with zero themes shows the image and an explanatory line,
+  not a blank chip row.
+- The trait chips are always accompanied by the "first guess" caveat — never
+  presented as a fixed conclusion about the user.
+- Types come from the frozen contract via `ui-data.ts`; the page does not
+  declare its own copy of the profile shape.

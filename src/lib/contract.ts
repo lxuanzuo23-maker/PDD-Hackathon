@@ -203,6 +203,35 @@ export interface TraitsProfile {
   currentMood: Mood;
 }
 
+// ---------- Profile ----------
+
+/**
+ * Read-only view of what the app knows about the user. Deliberately shows
+ * the adaptive traits back to them rather than hiding them: the coach
+ * changes its behaviour based on these, so the user should be able to see
+ * what it thinks.
+ */
+export interface ProfileResponse {
+  onboarded: boolean;
+  age?: number;
+  gender?: string;
+  habitToImprove?: string;
+  newHabitGoal?: string;
+  visionBoardImageUrl?: string;
+  visionBoardThemes: string[];
+  communicationStyle?: TraitsProfile["communicationStyle"];
+  motivationStyle?: TraitsProfile["motivationStyle"];
+  /** Most recent mood check-ins, newest first. */
+  recentMoods: { mood: Mood; date: string }[];
+  stats: {
+    streakDays: number;
+    pointsBalance: number;
+    activeGoals: number;
+    totalCheckIns: number;
+  };
+  companion: CompanionState;
+}
+
 // ---------- Growth dashboard (per goal) ----------
 
 export interface GrowthResponse {

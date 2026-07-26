@@ -24,19 +24,25 @@ async function main() {
     data: { name: "Demo User", streak: 3, lastStreakAt: yesterday },
   });
 
-  await prisma.userTraits.create({
-    data: {
-      userId: user.id,
-      age: 27,
-      gender: "prefer not to say",
-      communicationStyle: "encouraging",
-      motivationStyle: "support",
-    },
-  });
-
-  await prisma.moodCheckIn.create({
-    data: { userId: user.id, mood: "okay" },
-  });
+  // Deliberately NOT seeding a UserTraits row: its presence is what
+  // /api/onboarding/status reports as `completed: true`, which makes the
+  // onboarding page redirect straight to /today. Leaving it unseeded keeps
+  // the quiz reachable for the demo. Set SEED_ONBOARDED=1 to seed it and
+  // test the returning-user (skip the quiz) path instead.
+  if (process.env.SEED_ONBOARDED === "1") {
+    await prisma.userTraits.create({
+      data: {
+        userId: user.id,
+        age: 27,
+        gender: "prefer not to say",
+        communicationStyle: "encouraging",
+        motivationStyle: "support",
+      },
+    });
+    await prisma.moodCheckIn.create({
+      data: { userId: user.id, mood: "okay" },
+    });
+  }
 
   // Seed xp at 80, not 40 — Tiny hat (cost 20) then reaches xp 100 / level
   // 3 with XP_PER_LEVEL = 50, producing the demo's promised level-up.
@@ -75,8 +81,11 @@ async function main() {
         title: "Ship the side project MVP",
         category: "project",
         difficulty: 3,
-        checkInFrequency: "weekly",
-        penaltyPoints: 50,
+        // Daily like the others: only daily cadence ships (see Cadence in
+        // contract.ts), and the period math in goals.ts assumes it. A
+        // "weekly" row here would be charged a penalty every day.
+        checkInFrequency: "daily",
+        penaltyPoints: 20,
         endDate: in60Days,
       },
     ],

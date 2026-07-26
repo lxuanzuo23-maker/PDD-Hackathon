@@ -1,0 +1,50 @@
+# Role
+You are writing the profile endpoint for TinyWins — the read-only view of
+everything the app knows about the user, including the adaptive traits the
+coach uses.
+
+# Requirements
+Build `src/app/api/profile/route.ts`.
+
+**`GET`** -> `ProfileResponse` for the demo user:
+
+- `onboarded` — whether a `UserTraits` row exists. When it doesn't, return
+  the response **without** the trait fields but **with** `stats`,
+  `companion`, `recentMoods`, and an empty `visionBoardThemes`, so the page
+  can still show progress and offer a link into onboarding. Do not 404 an
+  un-onboarded user.
+- Trait fields (`age`, `gender`, `habitToImprove`, `newHabitGoal`,
+  `visionBoardImageUrl`, `communicationStyle`, `motivationStyle`) come from
+  `UserTraits`. Omit optional ones that are null rather than emitting
+  `null` — the UI checks presence.
+- `visionBoardThemes` is stored JSON-encoded. Parse defensively: a malformed
+  value must degrade to `[]`, never 500 the profile.
+- `recentMoods` — the newest 14 `MoodCheckIn` rows, newest first, each as
+  `{ mood, date }` where date is a UTC "YYYY-MM-DD" string.
+- `stats` — `streakDays` (`user.streak`), `pointsBalance` (ledger sum),
+  `activeGoals` (count of `active` goals), `totalCheckIns` (count of
+  `CheckIn` rows joined through the user's goals).
+- `companion` — upsert a default row if missing, so a fresh user doesn't 500.
+- 500 with a "run npm run seed" message when there is no demo user, matching
+  the existing pattern in `rewards/route.ts`.
+
+Fetch the independent reads concurrently (`Promise.all`) — this endpoint
+touches six tables and is on a page load path.
+
+# Interface
+Reference `ProfileResponse`, `TraitsProfile`, `Mood`, and `CompanionState`
+from `src/lib/contract.ts`.
+
+# Dependencies
+<include>src/lib/contract.ts</include>
+<include>src/lib/goals.ts</include>
+<include>src/lib/prisma.ts</include>
+
+# Acceptance criteria
+- A user with no `UserTraits` row returns `onboarded: false` with populated
+  `stats` and no trait fields — never a 404 or 500.
+- A `visionBoardThemes` column containing invalid JSON returns
+  `visionBoardThemes: []` and a 200.
+- `totalCheckIns` counts check-ins across all of the user's goals, including
+  goals that have since ended.
+- Optional empty trait fields are absent from the payload rather than `null`.

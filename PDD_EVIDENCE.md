@@ -17,7 +17,9 @@ update this continuously, not at the end.
 | `prompts/growth_api_typescript.prompt` | `src/app/api/growth/route.ts` | Growth screen | route-level, manual |
 | `prompts/rewards_api_typescript.prompt` | `src/app/api/rewards/**` | Rewards screen | route-level, manual |
 | `prompts/onboarding_api_typescript.prompt` | `src/app/api/onboarding/**` | Onboarding quiz | route-level, manual |
-| `prompts/traits_typescript.prompt` | `src/lib/traits.ts` _(not written yet, C)_ | onboarding route | `tests/traits.test.ts` _(planned, C)_ |
+| `prompts/traits_typescript.prompt` | `src/lib/traits.ts` | onboarding route, coach tone | `tests/traits.test.ts` ✅ |
+| `prompts/profile_api_typescript.prompt` | `src/app/api/profile/route.ts` | You screen | route-level, manual |
+| `prompts/ui-profile_typescript.prompt` | `src/app/profile/page.tsx` | You screen | manual |
 | `prompts/llm_typescript.prompt` | `src/lib/llm.ts` | `coach.ts`, `verifier.ts`, `traits.ts` | `tests/llm.test.ts` ✅ passing |
 | `prompts/ui-today_typescript.prompt` | `src/app/today/page.tsx` | Today screen | manual + `pdd test` (story) |
 | `prompts/tts_typescript.prompt` | `src/lib/tts.ts` | `src/app/api/tts/route.ts`, coach 2-minute-start card | `tests/tts.test.ts` ✅ passing |
@@ -95,6 +97,25 @@ _(fill in during the build)_
   rewritten Today page. The screens use explicit `NEXT_PUBLIC_UI_DATA_MODE`
   fixtures with a visible label only; live route failures remain labeled
   errors while Person A/C deliver the pivot API contracts.
+- 2026-07-25 `traits` + `profile`: NEW chains, born prompt-first. The team
+  converged onto one machine, so the A/B/C split was retired for these.
+  `traits.ts` was generated from the pre-existing
+  `prompts/traits_typescript.prompt` (unblocking the last `tsc` error and the
+  onboarding submit path) with `tests/traits.test.ts` covering all its stated
+  acceptance criteria, including that `analyzeVisionBoard` resolves to
+  `{ themes: [] }` rather than throwing on provider failure, invalid JSON, or
+  a missing key. `profile_api` and `ui-profile` are new chains added because
+  the quiz answers had nowhere to surface: the traits drive coach behaviour,
+  so the profile screen shows them back to the user, explicitly labelled as a
+  first guess that shifts with use rather than a verdict.
+  **Seed change in the same pass:** `prisma/seed.ts` no longer creates a
+  `UserTraits` row by default. Its presence made `/api/onboarding/status`
+  report `completed: true`, which silently redirected `/onboarding` to
+  `/today` — the quiz was unreachable. Set `SEED_ONBOARDED=1` to seed it and
+  exercise the returning-user path instead. Also switched the seeded
+  "Ship the side project MVP" goal from `weekly` to `daily`: only daily
+  cadence ships, and the period math in `goals.ts` would have charged that
+  row a penalty every day.
 - 2026-07-25 Person A contract reconciliation. B's UI shipped first against
   its own local types in `src/lib/ui-data.ts`; A's API shipped against
   `contract.ts`. The two disagreed on paths (`/api/goals` vs
