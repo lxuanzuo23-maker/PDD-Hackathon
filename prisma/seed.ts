@@ -10,6 +10,9 @@ async function main() {
   await prisma.reflection.deleteMany();
   await prisma.goalRoomEvent.deleteMany();
   await prisma.coachSession.deleteMany();
+  // Legacy table created by the pre-rebase Band migration. The current pivot
+  // uses CheckIn; clear this FK-dependent table until its drop migration lands.
+  await prisma.$executeRawUnsafe('DELETE FROM "GoalCheckIn"');
   await prisma.checkIn.deleteMany();
   await prisma.goal.deleteMany();
   await prisma.moodCheckIn.deleteMany();
