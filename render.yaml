@@ -29,3 +29,36 @@ services:
         sync: false
       - key: ELEVENLABS_VOICE_ID
         sync: false
+      - key: BAND_COACH_AGENT_ID
+        sync: false
+      - key: BAND_COACH_API_KEY
+        sync: false
+      - key: BAND_REFLECTION_AGENT_ID
+        sync: false
+      - key: BAND_REFLECTION_API_KEY
+        sync: false
+      - key: INTERNAL_WEBHOOK_SECRET
+        sync: false
+      - key: TINY_WINS_WEB_URL
+        sync: false
+
+  - type: worker
+    name: tinywins-band
+    runtime: python
+    plan: free
+    buildCommand: pip install -r services/band-worker/requirements.txt
+    startCommand: python services/band-worker/main.py
+    autoDeploy: true
+    envVars:
+      - key: BAND_COACH_AGENT_ID
+        sync: false
+      - key: BAND_COACH_API_KEY
+        sync: false
+      - key: BAND_REFLECTION_AGENT_ID
+        sync: false
+      - key: BAND_REFLECTION_API_KEY
+        sync: false
+      - key: INTERNAL_WEBHOOK_SECRET
+        sync: false
+      - key: TINY_WINS_WEB_URL
+        sync: false

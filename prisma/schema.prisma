@@ -45,12 +45,16 @@ model Goal {
   // Points deducted per missed check-in period; configurable per goal
   // since stakes vary ("fifty points or twenty points or whatever").
   penaltyPoints    Int       @default(20)
+  bandRoomId       String?   @unique
   // Drives both streak continuation and the lazy missed-day penalty check.
   lastCheckInAt    DateTime?
   createdAt        DateTime  @default(now())
 
   user     User      @relation(fields: [userId], references: [id])
   checkIns CheckIn[]
+  roomEvents GoalRoomEvent[]
+  reflections Reflection[]
+  coachSessions CoachSession[]
 
   @@index([userId])
 }
@@ -69,8 +73,46 @@ model CheckIn {
   createdAt  DateTime @default(now())
 
   goal Goal @relation(fields: [goalId], references: [id])
+  reflection Reflection?
 
   @@index([goalId])
+}
+
+model GoalRoomEvent {
+  id String @id @default(cuid())
+  goalId String
+  userId String
+  type String
+  payload String
+  idempotencyKey String? @unique
+  occurredAt DateTime
+  createdAt DateTime @default(now())
+  goal Goal @relation(fields: [goalId], references: [id])
+  @@index([goalId, occurredAt])
+}
+
+model Reflection {
+  id String @id @default(cuid())
+  goalId String
+  checkInId String? @unique
+  kind String
+  summary String
+  insights String
+  nextFocus String?
+  createdAt DateTime @default(now())
+  goal Goal @relation(fields: [goalId], references: [id])
+  checkIn CheckIn? @relation(fields: [checkInId], references: [id])
+  @@index([goalId, kind])
+}
+
+model CoachSession {
+  id String @id @default(cuid())
+  goalId String?
+  sessionId String @unique
+  approach String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  goal Goal? @relation(fields: [goalId], references: [id])
 }
 
 // Onboarding quiz answers + the adaptive profile the coach reads from.
