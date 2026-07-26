@@ -7,6 +7,9 @@ async function main() {
   // since Render's disk is ephemeral.
   await prisma.redemption.deleteMany();
   await prisma.pointsLedger.deleteMany();
+  await prisma.reflection.deleteMany();
+  await prisma.goalRoomEvent.deleteMany();
+  await prisma.coachSession.deleteMany();
   await prisma.checkIn.deleteMany();
   await prisma.goal.deleteMany();
   await prisma.moodCheckIn.deleteMany();

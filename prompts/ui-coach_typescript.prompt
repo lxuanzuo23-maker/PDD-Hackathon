@@ -7,7 +7,9 @@ user-started micro-step timer into the shared check-in and honest result flow.
   starter message per goal.
 - Implement `chatting → microStepReady → timing → interview → submitting →
   result`.
-- Start timers only from the user's button gesture; keep TTS inactive in P0.
+- Start timers only from the user's button gesture. Prefetch the ElevenLabs
+  pep talk after a micro-step arrives, play it on that Start gesture without
+  delaying the timer, and show a labeled unavailable state on failure.
 - Render approach feedback only when the server sets `showApproachCheckIn`.
 - Reuse `CheckInFlow` and `CheckInResultCard`.
 

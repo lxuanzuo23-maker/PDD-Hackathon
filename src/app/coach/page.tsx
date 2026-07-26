@@ -25,6 +25,8 @@ function CoachChat() {
   const [input, setInput] = useState("");
   const [microStep, setMicroStep] = useState<CoachReply["microStep"]>();
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const [error, setError] = useState<string | null>(null);
   const [showApproachCheckIn, setShowApproachCheckIn] = useState(false);
   const [result, setResult] = useState<CheckInResult | null>(null);
@@ -50,11 +52,50 @@ function CoachChat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goalId]);
 
+  // Voice is additive: prefetch after a micro-step arrives, but never delay
+  // the timer or hide an upstream failure behind a canned recording.
+  useEffect(() => {
+    if (!microStep?.description) {
+      setVoiceUrl(null);
+      setVoiceStatus("idle");
+      return;
+    }
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setVoiceStatus("loading");
+    setVoiceUrl(null);
+
+    fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: microStep.description }),
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("voice unavailable");
+        const audio = await response.blob();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(audio);
+        setVoiceUrl(objectUrl);
+        setVoiceStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setVoiceStatus("unavailable");
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [microStep?.description]);
+
   function startTimer() {
     if (!microStep) return;
     if (timerRef.current) clearInterval(timerRef.current);
     setPhase("timing");
     setSecondsLeft(microStep.timerSeconds);
+    if (voiceUrl) {
+      void new Audio(voiceUrl).play().catch(() => setVoiceStatus("unavailable"));
+    }
     timerRef.current = setInterval(() => {
       setSecondsLeft((current) => {
         if (current === null || current <= 1) {
@@ -134,14 +175,23 @@ function CoachChat() {
         <section className="rounded-2xl border border-gold bg-gold/20 p-5 text-center space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-moss-700">2-minute start</p>
           <p className="font-medium text-moss-900">{microStep.description}</p>
+          {voiceStatus === "loading" && <p className="text-xs text-moss-700">Preparing voice pep talk…</p>}
+          {voiceStatus === "unavailable" && <p className="text-xs text-moss-700">Voice unavailable — your timer still works.</p>}
           {phase === "microStepReady" ? (
-            <button onClick={startTimer} className="rounded-full bg-moss-700 px-5 py-3 text-sm font-semibold text-paper">Start timer</button>
+            <button onClick={startTimer} className="rounded-full bg-moss-700 px-5 py-3 text-sm font-semibold text-paper">
+              {voiceStatus === "ready" ? "Start timer + play pep talk" : "Start timer"}
+            </button>
           ) : (
             <>
               <p className="font-display text-4xl text-spark">
                 {Math.floor((secondsLeft ?? 0) / 60)}:{String((secondsLeft ?? 0) % 60).padStart(2, "0")}
               </p>
               {goalId && <button onClick={() => setPhase("interview")} className="rounded-full bg-moss-700 px-5 py-3 text-sm font-semibold text-paper">I&apos;m done</button>}
+              {voiceStatus === "ready" && voiceUrl && (
+                <button onClick={() => void new Audio(voiceUrl).play().catch(() => setVoiceStatus("unavailable"))} className="block mx-auto text-xs text-moss-700 underline">
+                  Play pep talk again
+                </button>
+              )}
             </>
           )}
         </section>
