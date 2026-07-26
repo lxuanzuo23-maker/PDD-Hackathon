@@ -11,12 +11,22 @@ api_key)` run concurrently with `asyncio.gather`:
 
 - **Goal Coach** (`BAND_COACH_AGENT_ID`/`BAND_COACH_API_KEY`), adapter
   mirrors each mention to `/api/internal/band/coach-event` and replies
-  with a short acknowledgment.
+  with a short acknowledgment — a handoff-specific one when the sender is
+  an agent ("Received the handoff…"), the standard logged line for humans.
 - **Reflection Guide** (`BAND_REFLECTION_*`), adapter parses message
   content as JSON (falling back to `{"content": <formatted text>}` for
   human free text), posts it to `/api/internal/band/reflections`, and
   **voices the web's `reply` field** into the room — falling back to a
-  short "received" line if the response has no reply.
+  short "received" line if the response has no reply. After replying to
+  the human it **hands off to Goal Coach**: a second message mentioning
+  `BAND_COACH_AGENT_ID` carrying the reply ("Coach handoff from
+  Reflection Guide: …") — the visible agent→agent hop.
+
+Loop guard (non-negotiable): the handoff chain is **one hop by design**.
+Reflection Guide ignores any message whose `sender_type` is `"Agent"`
+(the SDK's literal, capital A), so Goal Coach's acknowledgment terminates
+the chain instead of re-triggering a reflection. Goal Coach may answer
+agents but never mentions another agent in its ack beyond the sender.
 
 All user-facing replies use `tools.send_message` (a normal chat bubble).
 `send_event` types (thought/error) are hidden behind Band's event-type

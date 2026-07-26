@@ -74,10 +74,11 @@ class GoalCoachAdapter(SimpleAdapter):
                 mentions=[{"id": msg.sender_id}],
             )
             return
-        await tools.send_message(
-            "Logged — this moment is on your Goal Room timeline. Keep going.",
-            mentions=[{"id": msg.sender_id}],
-        )
+        if msg.sender_type == "Agent":
+            ack = "Received the handoff — I'll fold this into the user's next 2-minute start."
+        else:
+            ack = "Logged — this moment is on your Goal Room timeline. Keep going."
+        await tools.send_message(ack, mentions=[{"id": msg.sender_id}])
 
 
 class ReflectionAdapter(SimpleAdapter):
@@ -94,6 +95,11 @@ class ReflectionAdapter(SimpleAdapter):
         is_session_bootstrap: bool,
         room_id: str,
     ) -> None:
+        # One-hop handoff chain by design: agent-sent messages (e.g. Goal
+        # Coach's ack) never re-trigger a reflection, so no agent loop exists.
+        if msg.sender_type == "Agent":
+            return
+
         try:
             payload = json.loads(msg.content)
         except (TypeError, json.JSONDecodeError):
@@ -116,6 +122,14 @@ class ReflectionAdapter(SimpleAdapter):
 
         reply = (result or {}).get("reply") or "Reflection Guide received the check-in."
         await tools.send_message(reply, mentions=[{"id": msg.sender_id}])
+
+        # The visible agent→agent hop: hand the suggestion to Goal Coach.
+        coach_agent_id = os.environ.get("BAND_COACH_AGENT_ID")
+        if coach_agent_id:
+            await tools.send_message(
+                f"Coach handoff from Reflection Guide: {reply}",
+                mentions=[{"id": coach_agent_id}],
+            )
 
 
 async def main() -> None:
