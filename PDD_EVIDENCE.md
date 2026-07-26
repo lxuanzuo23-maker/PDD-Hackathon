@@ -78,6 +78,15 @@ _(fill in during the build)_
 
 ## Module change log (chain kept in sync)
 
+- 2026-07-25 `band-worker`: evidence-driven fix — replies silently failed with
+  Band redelivering the same mention 13 times. Root cause read from SDK
+  source: `send_message` REQUIRES ≥1 mention, and our replies passed none, so
+  every send raised after the web callback succeeded. Also, SDK errors went
+  to handlerless loggers — invisible. Fix: every reply mentions the
+  triggering sender (`mentions=[{"id": msg.sender_id}]`) + `logging.basicConfig`
+  at startup. Verified live: redelivered mention → reply `201 Created` →
+  message marked processed → queue drained. Prompt updated in the same
+  commit.
 - 2026-07-25 `band_callbacks` + `band-worker` (NEW chains): free-text mentions
   to Reflection Guide no longer play dead. Demo requirement: a human typing at
   the agent must get a visible answer. The reflections route now answers

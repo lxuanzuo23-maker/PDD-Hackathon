@@ -22,6 +22,13 @@ All user-facing replies use `tools.send_message` (a normal chat bubble).
 `send_event` types (thought/error) are hidden behind Band's event-type
 filter — never put the reply a human is waiting for inside one.
 
+Band's API rejects agent messages with zero mentions — every reply must
+mention the triggering sender via `mentions=[{"id": msg.sender_id}]` (the
+id-bearing dict is the SDK's ground-truth shape that cannot miss the
+participants cache). Configure `logging.basicConfig` at startup
+(`BAND_LOG_LEVEL`, default INFO) so SDK/adapter errors reach the process
+log instead of vanishing into handlerless loggers.
+
 `post_internal(path, payload)` signs the JSON body with HMAC-SHA256
 (`INTERNAL_WEBHOOK_SECRET`, hex digest in `X-TinyWins-Signature`), POSTs
 to `TINY_WINS_WEB_URL` + path, and returns the parsed response JSON.

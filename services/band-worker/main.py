@@ -8,8 +8,11 @@ import asyncio
 import hashlib
 import hmac
 import json
+import logging
 import os
 import urllib.request
+
+logging.basicConfig(level=os.environ.get("BAND_LOG_LEVEL", "INFO"))
 
 from band import Agent
 from band.core.protocols import AgentToolsProtocol
@@ -67,11 +70,13 @@ class GoalCoachAdapter(SimpleAdapter):
             )
         except Exception as error:
             await tools.send_message(
-                f"Goal Coach can't reach TinyWins right now ({error})."
+                f"Goal Coach can't reach TinyWins right now ({error}).",
+                mentions=[{"id": msg.sender_id}],
             )
             return
         await tools.send_message(
-            "Logged — this moment is on your Goal Room timeline. Keep going."
+            "Logged — this moment is on your Goal Room timeline. Keep going.",
+            mentions=[{"id": msg.sender_id}],
         )
 
 
@@ -104,12 +109,13 @@ class ReflectionAdapter(SimpleAdapter):
             )
         except Exception as error:
             await tools.send_message(
-                f"Reflection Guide can't reach TinyWins right now ({error})."
+                f"Reflection Guide can't reach TinyWins right now ({error}).",
+                mentions=[{"id": msg.sender_id}],
             )
             return
 
         reply = (result or {}).get("reply") or "Reflection Guide received the check-in."
-        await tools.send_message(reply)
+        await tools.send_message(reply, mentions=[{"id": msg.sender_id}])
 
 
 async def main() -> None:
